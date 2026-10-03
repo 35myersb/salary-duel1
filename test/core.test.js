@@ -16,10 +16,10 @@ test("creates an 8-player lineup structure",()=>{
  openWeek(l,1,players());
  const pool=l.weeks[0].matchups[0].pool;
  assert.equal(pool.length,50);
- const qb=pool.filter(p=>p.pos==="QB").slice(0,1).map(p=>p.id);
- const rb=pool.filter(p=>p.pos==="RB").slice(0,2).map(p=>p.id);
- const wr=pool.filter(p=>p.pos==="WR").slice(0,3).map(p=>p.id);
- const flex=pool.filter(p=>p.pos==="TE").slice(0,2).map(p=>p.id);
+ const qb=pool.filter(p=>p.pos==="QB").slice(-1).map(p=>p.id);
+ const rb=pool.filter(p=>p.pos==="RB").slice(-2).map(p=>p.id);
+ const wr=pool.filter(p=>p.pos==="WR").slice(-3).map(p=>p.id);
+ const flex=pool.filter(p=>p.pos==="TE").slice(-2).map(p=>p.id);
  const v=validateLineup({QB:qb,RB:rb,WR:wr,FLEX:flex},pool,50000);
  assert.equal(v.ok,true); assert.equal(v.complete,true);
 });
