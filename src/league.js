@@ -1,0 +1,170 @@
+import crypto from 'node:crypto';
+import { ApiError, seededRng, shuffle, round2 } from './util.js';
+import { salaryFromProjection } from './pricing.js';
+import { PROVIDER_NAMES } from './providers/index.js';
+
+export const SLOTS = { QB: 1, RB: 2, WR: 3, FLEX: 2 };
+export const SLOT_NAMES = Object.keys(SLOTS);
+export const FLEX_POS = ['RB', 'WR', 'TE'];
+export const POOL_SIZES = { QB: 8, RB: 14, WR: 18, TE: 10 };
+export const POOL_CANDIDATES = { QB: 32, RB: 70, WR: 90, TE: 35 };
+export const MIN_BUDGET = 25000;
+export const MAX_BUDGET = 100000;
+const TOTAL_SLOTS = Object.values(SLOTS).reduce((a, b) => a + b, 0);
+export const STANDOFF_DEFAULTS = { mutualPenalty: 10, foldPenalty: 3, holdBonus: 3 };
+export const standoffRules = (league) => ({ ...STANDOFF_DEFAULTS, ...(league.standoff || {}) });
+const lineupIds = (lineup) => (lineup ? SLOT_NAMES.flatMap((s) => lineup[s] || []) : []);
+export const lineupKey = (lineup) => lineupIds(lineup).sort().join('|');
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function randomString(len) { return [...crypto.randomBytes(len)].map((b) => CODE_CHARS[b % CODE_CHARS.length]).join(''); }
+export const makeCode = () => randomString(8);
+export const makeLeagueId = () => randomString(6).toLowerCase();
+export const emptyLineup = () => ({ QB: [], RB: [], WR: [], FLEX: [] });
+function wholeNumber(value, min, max, label) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) throw new ApiError(400, `${label} must be a whole number from ${min} to ${max}`);
+  return n;
+}
+export function roundRobin(teamIds, numWeeks) {
+  const arr = [...teamIds]; if (arr.length % 2) arr.push(null);
+  const n = arr.length, rounds = [];
+  for (let r = 0; r < n - 1; r++) {
+    const pairs = []; for (let i = 0; i < n / 2; i++) pairs.push([arr[i], arr[n - 1 - i]]);
+    rounds.push(pairs); arr.splice(1, 0, arr.pop());
+  }
+  return Array.from({ length: numWeeks }, (_, w) => rounds[w % rounds.length]);
+}
+export function createLeague(input) {
+  const name = String(input?.name || '').trim();
+  if (!name || name.length > 60) throw new ApiError(400, 'League name is required (60 characters max)');
+  const season = wholeNumber(input.season, 2000, 2100, 'Season');
+  const startWeek = wholeNumber(input.startWeek, 1, 18, 'First NFL week');
+  const numWeeks = wholeNumber(input.numWeeks, 1, 18, 'Number of weeks');
+  if (startWeek + numWeeks - 1 > 18) throw new ApiError(400, 'The schedule runs past NFL week 18');
+  const budget = wholeNumber(input.budget ?? 50000, MIN_BUDGET, MAX_BUDGET, 'Budget');
+  const provider = input.provider ?? 'mock';
+  if (!PROVIDER_NAMES.includes(provider)) throw new ApiError(400, 'Unknown data source');
+  const sIn = input.standoff ?? {};
+  const standoff = {
+    mutualPenalty: wholeNumber(sIn.mutualPenalty ?? STANDOFF_DEFAULTS.mutualPenalty, 0, 50, 'Both-hold penalty'),
+    foldPenalty: wholeNumber(sIn.foldPenalty ?? STANDOFF_DEFAULTS.foldPenalty, 0, 50, 'Fold penalty'),
+    holdBonus: wholeNumber(sIn.holdBonus ?? STANDOFF_DEFAULTS.holdBonus, 0, 50, 'Hold bonus'),
+  };
+  const names = (Array.isArray(input.teams) ? input.teams : []).map((s) => String(s).trim()).filter(Boolean);
+  if (names.length < 2 || names.length > 20) throw new ApiError(400, 'A league needs 2 to 20 teams');
+  if (names.some((n) => n.length > 40)) throw new ApiError(400, 'Team names are 40 characters max');
+  if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) throw new ApiError(400, 'Team names must be unique');
+  const teams = names.map((n, i) => ({ id: `t${i + 1}`, name: n, code: randomString(8), isCommish: i === 0 }));
+  const schedule = roundRobin(teams.map((t) => t.id), numWeeks);
+  const weeks = schedule.map((pairs, idx) => ({
+    week: idx + 1, nflWeek: startWeek + idx, status: 'pending', lockAt: null,
+    matchups: pairs.map(([x, y], i) => { const [a, b] = x === null ? [y, x] : [x, y]; return { id: `w${idx + 1}m${i + 1}`, a, b, pool: null, lineups: {}, result: null }; }),
+  }));
+  return { id: makeLeagueId(), name, season, startWeek, numWeeks, budget, provider, standoff, createdAt: new Date().toISOString(), teams, weeks };
+}
+export function getWeek(league, weekNo) {
+  const w = league.weeks.find((x) => x.week === Number(weekNo)); if (!w) throw new ApiError(404, 'No such week'); return w;
+}
+export function refreshStatuses(league, now = Date.now()) {
+  let changed = false;
+  for (const w of league.weeks) if (w.status === 'open' && w.lockAt && Date.parse(w.lockAt) <= now) { lockWeek(league, w); changed = true; }
+  return changed;
+}
+export function checkStandoff(m) {
+  if (m.b === null || m.standoff) return;
+  const la = m.lineups[m.a], lb = m.lineups[m.b];
+  if (!la || !lb || lineupIds(la).length !== TOTAL_SLOTS || lineupIds(lb).length !== TOTAL_SLOTS) return;
+  if (lineupKey(la) !== lineupKey(lb)) return;
+  m.standoff = { shared: lineupKey(la), triggeredAt: new Date().toISOString(), outcome: null };
+}
+export function backupLineup(pool) {
+  const sorted = [...pool].sort((x, y) => x.salary - y.salary || x.proj - y.proj || x.id.localeCompare(y.id));
+  const lineup = emptyLineup(), used = new Set();
+  const take = (slot, eligible) => { for (const p of sorted) { if (lineup[slot].length >= SLOTS[slot]) break; if (used.has(p.id) || !eligible(p)) continue; lineup[slot].push(p.id); used.add(p.id); } };
+  take('QB', (p) => p.pos === 'QB'); take('RB', (p) => p.pos === 'RB'); take('WR', (p) => p.pos === 'WR'); take('FLEX', (p) => FLEX_POS.includes(p.pos)); return lineup;
+}
+function scheduleAdjustment(league, fromWeek, teamId, points, reason) {
+  if (!points) return null;
+  for (const w of league.weeks) {
+    if (w.week <= fromWeek || w.status === 'final') continue;
+    const plays = w.matchups.some((m) => (m.a === teamId || m.b === teamId) && m.b !== null);
+    if (!plays) continue;
+    w.adjustments ||= {}; (w.adjustments[teamId] ||= []).push({ points, reason, fromWeek }); return w.week;
+  }
+  return null;
+}
+function resolveStandoff(league, w, m) {
+  const rules = standoffRules(league), sd = m.standoff;
+  const ka = lineupKey(m.lineups[m.a]), kb = lineupKey(m.lineups[m.b]);
+  const outcome = { type: 'both-fold', folder: null, holder: null, adjustments: [] };
+  const adjust = (teamId, points, reason) => outcome.adjustments.push({ teamId, points, appliesToWeek: scheduleAdjustment(league, w.week, teamId, points, reason) });
+  if (ka === kb && lineupIds(m.lineups[m.a]).length === TOTAL_SLOTS) {
+    outcome.type = 'mutual'; outcome.originalLineups = { [m.a]: m.lineups[m.a], [m.b]: m.lineups[m.b] };
+    m.lineups[m.a] = backupLineup(m.pool); m.lineups[m.b] = backupLineup(m.pool);
+    const reason = `Standoff in week ${w.week}: both held`; adjust(m.a, -rules.mutualPenalty, reason); adjust(m.b, -rules.mutualPenalty, reason);
+  } else {
+    const aFolded = ka !== sd.shared, bFolded = kb !== sd.shared;
+    if (aFolded !== bFolded) { outcome.type = 'fold'; outcome.folder = aFolded ? m.a : m.b; outcome.holder = aFolded ? m.b : m.a; adjust(outcome.folder, -rules.foldPenalty, `Standoff in week ${w.week}: you folded`); adjust(outcome.holder, rules.holdBonus, `Standoff in week ${w.week}: your opponent folded`); }
+  }
+  sd.outcome = outcome;
+}
+export function lockWeek(league, w) { w.status = 'locked'; for (const m of w.matchups) if (m.standoff && !m.standoff.outcome) resolveStandoff(league, w, m); }
+function buildPool(players, rng) {
+  const pool = [];
+  for (const pos of Object.keys(POOL_SIZES)) {
+    const candidates = players.filter((p) => p.pos === pos).sort((a, b) => b.proj - a.proj).slice(0, POOL_CANDIDATES[pos]);
+    if (candidates.length < POOL_SIZES[pos]) throw new ApiError(502, `Not enough ${pos}s available from the data source to build a pool`);
+    for (const p of shuffle(candidates, rng).slice(0, POOL_SIZES[pos])) pool.push({ id: p.id, name: p.name, pos: p.pos, team: p.team, proj: p.proj, salary: salaryFromProjection(p.proj) });
+  }
+  const order = Object.keys(POOL_SIZES); return pool.sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.salary - a.salary);
+}
+export function openWeek(league, weekNo, players) {
+  const w = getWeek(league, weekNo); if (w.status !== 'pending') throw new ApiError(409, 'That week is already open');
+  for (const m of w.matchups) if (m.b !== null) m.pool = buildPool(players, seededRng(`${league.id}-${league.season}-${w.week}-${m.id}-${Date.now()}`));
+  w.status = 'open';
+}
+export function validateLineup(raw, pool, budget) {
+  const errors = [], byId = new Map(pool.map((p) => [p.id, p])), lineup = emptyLineup(), seen = new Set(), input = raw && typeof raw === 'object' ? raw : {};
+  let salary = 0;
+  for (const slot of SLOT_NAMES) {
+    const ids = input[slot] ?? [];
+    if (!Array.isArray(ids)) { errors.push(`${slot} must be a list`); continue; }
+    if (ids.length > SLOTS[slot]) errors.push(`Too many players in ${slot} (max ${SLOTS[slot]})`);
+    for (const id of ids.slice(0, SLOTS[slot])) {
+      const p = byId.get(id); if (!p) { errors.push('A player in your lineup is not in this matchup’s pool'); continue; }
+      if (seen.has(id)) { errors.push(`${p.name} is in your lineup twice`); continue; }
+      const eligible = slot === 'FLEX' ? FLEX_POS.includes(p.pos) : p.pos === slot;
+      if (!eligible) { errors.push(`${p.name} (${p.pos}) can’t play ${slot}`); continue; }
+      seen.add(id); lineup[slot].push(id); salary += p.salary;
+    }
+  }
+  if (salary > budget) errors.push(`Over budget by $${(salary - budget).toLocaleString('en-US')}`);
+  return { ok: errors.length === 0, errors, lineup, salary, complete: seen.size === TOTAL_SLOTS };
+}
+export function poolIds(week) { const ids = new Set(); for (const m of week.matchups) for (const p of m.pool || []) ids.add(p.id); return [...ids]; }
+export function scoreWeek(league, weekNo, actuals) {
+  const w = getWeek(league, weekNo); if (w.status !== 'locked' && w.status !== 'final') throw new ApiError(409, 'Lock the week before scoring it');
+  for (const m of w.matchups) {
+    if (m.b === null) { m.result = { bye: true }; continue; }
+    const points = {}, adjustments = {};
+    for (const teamId of [m.a, m.b]) {
+      const lineup = m.lineups[teamId] || emptyLineup(), ids = SLOT_NAMES.flatMap((s) => lineup[s]), adj = w.adjustments?.[teamId] || [];
+      adjustments[teamId] = adj; points[teamId] = round2(ids.reduce((sum, id) => sum + (actuals[id] || 0), 0) + adj.reduce((s, a) => s + a.points, 0));
+    }
+    const playerPoints = {}; for (const p of m.pool) playerPoints[p.id] = actuals[p.id] || 0;
+    const winner = points[m.a] === points[m.b] ? 'tie' : points[m.a] > points[m.b] ? m.a : m.b;
+    m.result = { points, adjustments, playerPoints, winner };
+  }
+  w.status = 'final';
+}
+export function standings(league) {
+  const rows = new Map(league.teams.map((t) => [t.id, { teamId: t.id, name: t.name, w: 0, l: 0, t: 0, pf: 0, pa: 0 }]));
+  for (const w of league.weeks) if (w.status === 'final') for (const m of w.matchups) {
+    if (!m.result || m.result.bye) continue;
+    const ra = rows.get(m.a), rb = rows.get(m.b), pa = m.result.points[m.a], pb = m.result.points[m.b];
+    ra.pf += pa; ra.pa += pb; rb.pf += pb; rb.pa += pa;
+    if (m.result.winner === 'tie') { ra.t++; rb.t++; } else if (m.result.winner === m.a) { ra.w++; rb.l++; } else { rb.w++; ra.l++; }
+  }
+  return [...rows.values()].map((r) => ({ ...r, pf: round2(r.pf), pa: round2(r.pa) }))
+    .sort((x, y) => y.w + y.t / 2 - (x.w + x.t / 2) || y.pf - x.pf);
+}
