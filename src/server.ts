@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import api from "../api/index.js";
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const publicDir=path.join(root,"public");
+const publicDir=path.resolve(root,"..","public");
 const mime={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8"};
 
 const server=http.createServer(async(req,res)=>{
