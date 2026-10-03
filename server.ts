@@ -2,7 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import api from "./api/index.js";
+async function handleApi(req, res) {\n  const { default: api } = await import("./api/index.js");\n  return api(req, res);\n}
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(root, "public");
@@ -13,7 +13,7 @@ const mime = {
 };
 
 const server = http.createServer(async (req, res) => {
-  if (req.url?.startsWith("/api/")) return api(req, res);
+  if (req.url?.startsWith("/api/")) return handleApi(req, res);
 
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
   const relative = pathname === "/" ? "index.html" : pathname.replace(/^\//, "");
