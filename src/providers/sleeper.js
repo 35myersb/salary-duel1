@@ -3,24 +3,72 @@ import {scoreHalfPPR} from "../scoring.js";
 const BASE="https://api.sleeper.app/v1";
 const POS=["QB","RB","WR","TE"];
 async function getJSON(url){const r=await fetch(url,{signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error("Sleeper responded "+r.status);return r.json()}
-const endpoint=(kind,s,w)=>kind==="players"?BASE+"/players/nfl":BASE+"/"+kind+"/nfl/regular/"+s+"/"+w+"?season_type=regular&order_by=pts_half_ppr&"+POS.map(p=>"position[]="+p).join("&");
+const statsEndpoint=(s,w)=>BASE+"/stats/nfl/regular/"+s+"/"+w+"?season_type=regular";
+const playersEndpoint=()=>BASE+"/players/nfl";
+
+function fantasy(stats){return Number(stats?.pts_half_ppr??scoreHalfPPR(stats||{}))||0;}
+
+async function historicalProjections(season, week, players){
+  // Sleeper does not reliably publish a forward-looking projection feed.
+  // Build a practical projection from the most recent available NFL production.
+  const weeks = [];
+  if (week > 1) {
+    for (let w=Math.max(1,week-4); w<week; w++) weeks.push([season,w]);
+  } else {
+    // Week 1: use the most recent completed weeks from the prior season.
+    for (let w=14; w<=18; w++) weeks.push([season-1,w]);
+  }
+  const datasets = await Promise.all(weeks.map(([s,w]) =>
+    cached("hist-"+s+"-"+w,21600000,()=>getJSON(statsEndpoint(s,w))).catch(()=>[])
+  ));
+  const totals = new Map(), counts = new Map();
+  for (const rows of datasets) for (const row of (Array.isArray(rows)?rows:[])) {
+    const id=row.player_id, pts=fantasy(row.stats||row);
+    if (!id || pts<=0) continue;
+    totals.set(id,(totals.get(id)||0)+pts);
+    counts.set(id,(counts.get(id)||0)+1);
+  }
+  return players.map(p=>{
+    const avg=counts.has(p.player_id)?totals.get(p.player_id)/counts.get(p.player_id):0;
+    return {...p,proj:Number(avg.toFixed(1))};
+  });
+}
+
 export default {
  name:"sleeper",label:"Real NFL data (Sleeper)",
  async getPlayers(s,w){
-  const [items,players]=await Promise.all([
-   cached("proj-"+s+"-"+w,21600000,()=>getJSON(endpoint("projections",s,w))),
-   cached("players-nfl",86400000,()=>getJSON(endpoint("players")))
-  ]);
-  if(!Array.isArray(items)||!items.length)throw new Error("No Sleeper projections posted for that week");
-  return items.map(i=>{
-   const meta=players?.[i.player_id]||{};
-   const stats=i.stats||i;
-   return {id:"sl-"+i.player_id,name:meta.full_name||[meta.first_name,meta.last_name].filter(Boolean).join(" ")||i.player_id,pos:meta.position||i.position,team:meta.team||i.team||"FA",proj:Number(stats.pts_half_ppr||0)};
-  }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2);
+  const players=await cached("players-nfl",86400000,()=>getJSON(playersEndpoint()));
+  const metaPlayers=Object.entries(players||{}).map(([id,p])=>({
+    player_id:id,
+    full_name:p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" "),
+    position:p.position,
+    team:p.team
+  })).filter(p=>POS.includes(p.position)&&p.team);
+  
+  let projected=[];
+  // Keep the direct projection attempt, but fall back to recent real production.
+  try {
+    const r=await getJSON(BASE+"/projections/nfl/regular/"+s+"/"+w+"?season_type=regular");
+    if(Array.isArray(r)) projected=r;
+  } catch {}
+  
+  if (projected.length) {
+    const byId=new Map(metaPlayers.map(p=>[p.player_id,p]));
+    return projected.map(i=>{
+      const meta=byId.get(i.player_id)||{};
+      const stats=i.stats||i;
+      return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,proj:fantasy(stats)};
+    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2);
+  }
+
+  const historical=await historicalProjections(s,w,metaPlayers);
+  return historical
+    .filter(p=>p.proj>=2)
+    .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj}));
  },
  async getActuals(s,w,ids){
-  const items=await getJSON(endpoint("stats",s,w));
-  const map=new Map(items.map(i=>["sl-"+i.player_id,Number((i.stats||i).pts_half_ppr??scoreHalfPPR(i.stats||i))]));
+  const items=await getJSON(statsEndpoint(s,w));
+  const map=new Map((Array.isArray(items)?items:[]).map(i=>["sl-"+i.player_id,fantasy(i.stats||i)]));
   return Object.fromEntries(ids.map(id=>[id,map.get(id)||0]));
  }
 };
