@@ -1,0 +1,17 @@
+{
+  "name": "salary-duel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Head-to-head fantasy football where every matchup gets its own priced player pool and a budget.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.76.0"
+  }
+}
