@@ -22,11 +22,17 @@ async function historicalProjections(season, week, players){
     cached("hist-"+s+"-"+w,21600000,()=>getJSON(statsEndpoint(s,w))).catch(()=>[])
   ));
   const totals = new Map(), counts = new Map();
-  for (const rows of datasets) for (const row of (Array.isArray(rows)?rows:[])) {
-    const id=row.player_id, pts=fantasy(row.stats||row);
-    if (!id || pts<=0) continue;
-    totals.set(id,(totals.get(id)||0)+pts);
-    counts.set(id,(counts.get(id)||0)+1);
+  for (const rows of datasets) {
+    const entries = Array.isArray(rows)
+      ? rows.map((row) => [row.player_id, row])
+      : Object.entries(rows || {});
+    for (const [key, row] of entries) {
+      const id = row?.player_id || key;
+      const pts = fantasy(row?.stats || row);
+      if (!id || pts <= 0) continue;
+      totals.set(id,(totals.get(id)||0)+pts);
+      counts.set(id,(counts.get(id)||0)+1);
+    }
   }
   return players.map(p=>{
     const avg=counts.has(p.player_id)?totals.get(p.player_id)/counts.get(p.player_id):0;
