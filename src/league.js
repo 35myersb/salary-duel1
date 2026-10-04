@@ -55,12 +55,11 @@ export function createLeague(input) {
   if (names.some((n) => n.length > 40)) throw new ApiError(400, 'Team names are 40 characters max');
   if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) throw new ApiError(400, 'Team names must be unique');
   const teams = names.map((n, i) => ({ id: `t${i + 1}`, name: n, code: randomString(8), isCommish: i === 0 }));
-  const schedule = roundRobin(teams.map((t) => t.id), numWeeks);
-  const weeks = schedule.map((pairs, idx) => ({
-    week: idx + 1, nflWeek: startWeek + idx, status: 'pending', lockAt: null,
-    matchups: pairs.map(([x, y], i) => { const [a, b] = x === null ? [y, x] : [x, y]; return { id: `w${idx + 1}m${i + 1}`, a, b, pool: null, lineups: {}, result: null }; }),
-  }));
-  return { id: makeLeagueId(), name, season, startWeek, numWeeks, budget, provider, standoff, createdAt: new Date().toISOString(), teams, weeks };
+  const groupCount = wholeNumber(input.groupCount ?? (teams.length >= 8 ? 2 : 1), 1, Math.min(4, teams.length), 'Groups');
+  const groups = Array.from({length: groupCount}, (_, i) => ({id:`g${i+1}`,name:`Group ${String.fromCharCode(65+i)}`,teamIds:[]}));
+  teams.forEach((team,i)=>groups[i % groupCount].teamIds.push(team.id));
+  const weeks = Array.from({length:numWeeks}, (_,idx)=>({week:idx+1,nflWeek:startWeek+idx,status:'pending',lockAt:null,matchups:groups.flatMap(group=>roundRobin(group.teamIds,numWeeks)[idx].map(([x,y],i)=>{const [a,b]=x===null?[y,x]:[x,y];return{id:`w${idx+1}${group.id}m${i+1}`,groupId:group.id,a,b,pool:null,lineups:{},result:null};}))}));
+  return { id: makeLeagueId(), name, season, startWeek, numWeeks, budget, provider, standoff, groups, createdAt: new Date().toISOString(), teams, weeks };
 }
 export function getWeek(league, weekNo) {
   const w = league.weeks.find((x) => x.week === Number(weekNo)); if (!w) throw new ApiError(404, 'No such week'); return w;
@@ -118,9 +117,19 @@ function buildPool(players, rng) {
   }
   const order = Object.keys(POOL_SIZES); return pool.sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.salary - a.salary);
 }
+export function getGroups(league) {
+  return league.groups?.length ? league.groups : [{id:'g1',name:'Group A',teamIds:league.teams.map(t=>t.id)}];
+}
+export function groupStandings(league, groupId) {
+  const ids=new Set(getGroups(league).find(g=>g.id===groupId)?.teamIds||[]);
+  return standings(league).filter(r=>ids.has(r.teamId));
+}
 export function openWeek(league, weekNo, players) {
   const w = getWeek(league, weekNo); if (w.status !== 'pending') throw new ApiError(409, 'That week is already open');
-  for (const m of w.matchups) if (m.b !== null) m.pool = buildPool(players, seededRng(`${league.id}-${league.season}-${w.week}-${m.id}-${Date.now()}`));
+  for (const group of getGroups(league)) {
+    const pool=buildPool(players, seededRng(`${league.id}-${league.season}-${w.week}-${group.id}`));
+    for (const m of w.matchups) if (m.groupId===group.id && m.b!==null) m.pool=pool.map(p=>({...p}));
+  }
   w.status = 'open';
 }
 export function validateLineup(raw, pool, budget) {
