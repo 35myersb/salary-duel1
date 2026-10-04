@@ -110,12 +110,74 @@ function resolveStandoff(league, w, m) {
 export function lockWeek(league, w) { w.status = 'locked'; for (const m of w.matchups) if (m.standoff && !m.standoff.outcome) resolveStandoff(league, w, m); }
 function buildPool(players, rng) {
   const pool = [];
+  const unavailable = new Set(["out","ir","doubtful","inactive","injured_reserve"]);
   for (const pos of Object.keys(POOL_SIZES)) {
-    const candidates = players.filter((p) => p.pos === pos && !["out","ir","doubtful","inactive","injured_reserve"].includes(String(p.injuryStatus||"").toLowerCase())).sort((a, b) => b.proj - a.proj).slice(0, POOL_CANDIDATES[pos]);
+    const candidates = players
+      .filter((p) => p.pos === pos && !unavailable.has(String(p.injuryStatus||"").toLowerCase()))
+      .sort((a, b) => b.proj - a.proj)
+      .slice(0, POOL_CANDIDATES[pos]);
     if (candidates.length < POOL_SIZES[pos]) throw new ApiError(502, `Not enough ${pos}s available from the data source to build a pool`);
-    for (const p of shuffle(candidates, rng).slice(0, POOL_SIZES[pos])) pool.push({ id: p.id, name: p.name, pos: p.pos, team: p.team, proj: p.proj, salary: salaryFromProjection(p.proj, p.pos, { roleScore: p.roleScore, matchupBoost: p.matchupBoost, consistencyBoost: p.consistencyBoost }), injuryStatus: p.injuryStatus || "healthy" });
+    // Draw from projection tiers instead of randomly sampling the entire candidate list.
+    // This keeps group pools comparable in quality while still making them meaningfully different.
+    const n = POOL_SIZES[pos], tierCount = Math.ceil(candidates.length / 3);
+    const tiers = [
+      candidates.slice(0, tierCount),
+      candidates.slice(tierCount, tierCount * 2),
+      candidates.slice(tierCount * 2)
+    ].filter(Boolean);
+    const quotas = tiers.length === 3
+      ? [Math.ceil(n * 0.4), Math.floor(n * 0.35), n - Math.ceil(n * 0.4) - Math.floor(n * 0.35)]
+      : tiers.length === 2
+        ? [Math.ceil(n * 0.55), n - Math.ceil(n * 0.55)]
+        : [n];
+    tiers.forEach((tier, i) => {
+      const take = Math.min(quotas[i] || 0, tier.length);
+      for (const p of shuffle(tier, rng).slice(0, take)) {
+        pool.push({
+          id: p.id, name: p.name, pos: p.pos, team: p.team, proj: p.proj,
+          salary: salaryFromProjection(p.proj, p.pos, {
+            roleScore: p.roleScore, matchupBoost: p.matchupBoost, consistencyBoost: p.consistencyBoost
+          }),
+          injuryStatus: p.injuryStatus || "healthy"
+        });
+      }
+    });
+    // If a small tier could not fill its quota, top up from the remaining candidates.
+    if (pool.filter(p => p.pos === pos).length < n) {
+      const chosen = new Set(pool.filter(p => p.pos === pos).map(p => p.id));
+      for (const p of shuffle(candidates.filter(p => !chosen.has(p.id)), rng)) {
+        pool.push({
+          id: p.id, name: p.name, pos: p.pos, team: p.team, proj: p.proj,
+          salary: salaryFromProjection(p.proj, p.pos, {
+            roleScore: p.roleScore, matchupBoost: p.matchupBoost, consistencyBoost: p.consistencyBoost
+          }),
+          injuryStatus: p.injuryStatus || "healthy"
+        });
+        if (pool.filter(x => x.pos === pos).length >= n) break;
+      }
+    }
   }
-  const order = Object.keys(POOL_SIZES); return pool.sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.salary - a.salary);
+  const order = Object.keys(POOL_SIZES);
+  return pool.sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.salary - a.salary);
+}
+function cheapestCompleteLineup(pool) {
+  const sorted = [...pool].sort((a, b) => a.salary - b.salary || a.proj - b.proj);
+  const lineup = emptyLineup(), used = new Set();
+  const take = (slot, count, eligible) => {
+    for (const p of sorted) {
+      if (lineup[slot].length >= count) break;
+      if (used.has(p.id) || !eligible(p)) continue;
+      lineup[slot].push(p.id); used.add(p.id);
+    }
+  };
+  take("QB", 1, p => p.pos === "QB");
+  take("RB", 2, p => p.pos === "RB");
+  take("WR", 3, p => p.pos === "WR");
+  take("FLEX", 2, p => FLEX_POS.includes(p.pos));
+  const ids = SLOT_NAMES.flatMap(s => lineup[s]);
+  return ids.length === TOTAL_SLOTS
+    ? ids.reduce((sum, id) => sum + (pool.find(p => p.id === id)?.salary || 0), 0)
+    : Infinity;
 }
 export function getGroups(league) {
   return league.groups?.length ? league.groups : [{id:'g1',name:'Group A',teamIds:league.teams.map(t=>t.id)}];
@@ -128,6 +190,7 @@ export function openWeek(league, weekNo, players) {
   const w = getWeek(league, weekNo); if (w.status !== 'pending') throw new ApiError(409, 'That week is already open');
   for (const group of getGroups(league)) {
     const pool=buildPool(players, seededRng(`${league.id}-${league.season}-${w.week}-${group.id}`));
+    if (cheapestCompleteLineup(pool) > league.budget) throw new ApiError(502, `The generated player pool cannot produce a complete lineup under the ${league.budget.toLocaleString()} salary cap`);
     for (const m of w.matchups) if (m.groupId===group.id && m.b!==null) m.pool=pool.map(p=>({...p}));
   }
   w.poolReadyAt = new Date().toISOString();
