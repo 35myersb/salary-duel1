@@ -73,6 +73,17 @@ export default {
     .filter(p=>p.proj>=2)
     .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,injuryStatus:p.injuryStatus||null}));
  },
+ async getLockAt(s,w){
+  try {
+    const games=await cached("schedule-"+s,21600000,()=>getJSON("https://api.sleeper.app/schedule/nfl/regular/"+s));
+    const weekGames=(Array.isArray(games)?games:[]).filter(g=>Number(g.week)===Number(w)&&g.date);
+    if(!weekGames.length)return null;
+    const firstKickoff=Math.min(...weekGames.map(g=>Date.parse(g.date)).filter(Number.isFinite));
+    if(!Number.isFinite(firstKickoff))return null;
+    // Lock five minutes before the earliest scheduled game of the week.
+    return new Date(firstKickoff-5*60*1000).toISOString();
+  } catch { return null; }
+ },
  async getActuals(s,w,ids){
   const items=await getJSON(statsEndpoint(s,w));
   const map=new Map((Array.isArray(items)?items:[]).map(i=>["sl-"+i.player_id,fantasy(i.stats||i)]));
