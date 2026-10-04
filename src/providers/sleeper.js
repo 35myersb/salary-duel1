@@ -69,9 +69,10 @@ export default {
   }
 
   const historical=await historicalProjections(s,w,metaPlayers);
-  return historical
+  const out=historical
     .filter(p=>p.proj>=2)
     .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,injuryStatus:p.injuryStatus||null}));
+  return addOpponents(out,s,w);
  },
  async getLockAt(s,w){
   try {
