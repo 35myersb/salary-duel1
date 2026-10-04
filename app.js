@@ -16,7 +16,7 @@ function showCodes(codes){app.innerHTML=`<section class="card"><h2>League create
 async function load(){try{S.league=await api("/api/leagues/"+S.id);S.me=await api("/api/leagues/"+S.id+"/me");S.view=await api("/api/leagues/"+S.id+"/weeks/"+S.week);S.matchups=await api("/api/leagues/"+S.id+"/weeks/"+S.week+"/matchups");if(S.me.team.isCommish)S.submissions=await api("/api/leagues/"+S.id+"/weeks/"+S.week+"/submissions");S.lineup=S.view.matchup?.myLineup||empty();notifyPoolReady();render();startLivePolling()}catch(x){home(x.message)}}
 async function refreshLive(shouldRender=true){try{if(!S.id||!S.code||!S.view||["pending","final"].includes(S.view.week.status))return;S.live=await api("/api/leagues/"+S.id+"/weeks/"+S.week+"/live");if(shouldRender)render()}catch{}}
 function startLivePolling(){if(liveTimer)clearInterval(liveTimer);if(S.view&&!["pending","final"].includes(S.view.week.status)){refreshLive(false);liveTimer=setInterval(()=>refreshLive(S.viewName!=="team"),30000)}}
-function nav(){return '<nav class="tabs">'+[["dashboard","Home"],["team","My Team"],["matchups","Matchups"],["standings","Group Standings"],["players","Players"],["rules","Rules"],["commissioner","Commissioner"]].map(([v,label])=>'<button class="'+(S.viewName===v?"active":"")+'" data-nav="'+v+'">'+label+'</button>').join("")+'</nav>'}
+function nav(){return '<nav class="tabs">'+[["dashboard","Home"],["team","My Team"],["matchups","Matchups"],["standings","Standings"],["players","Players"],["rules","Rules"],["commissioner","Commissioner"]].map(([v,label])=>'<button class="'+(S.viewName===v?"active":"")+'" data-nav="'+v+'">'+label+'</button>').join("")+'</nav>'}
 function leagueHeader(){const l=S.league,w=S.view,poolReady=!!w.poolReadyAt||!!w.matchup?.pool?.length;return '<section class="card"><div class="bar"><div><div class="eyebrow">CAPPED LEAGUE</div><h1>'+esc(l.name)+'</h1><span class="pill">Week '+S.week+'</span> <span class="pill">NFL '+w.week.nflWeek+'</span> <span class="pill">'+esc(w.week.status.toUpperCase())+'</span></div><button class="secondary" id="leave">Switch League</button></div><p>League ID: <b class="copy">'+esc(l.id)+'</b> · Salary Cap: <b>'+money(l.budget)+'</b> · Player Pool: <b class="pill">'+(poolReady?'READY':'NOT READY')+'</b></p><div class="bar"><button id="prev" class="secondary">Previous</button><button id="next" class="secondary">Next</button></div></section>'}
 function shell(content){app.innerHTML=leagueHeader()+nav()+content;bindNav();bindWeekButtons()}
 function statusIcon(state){return '<span class="status-icon '+state+'" aria-label="'+(state==='complete'?'Complete':state==='progress'?'In progress':'Not ready')+'"></span>'}
@@ -25,7 +25,35 @@ function dashboardView(){const l=S.league,w=S.view,m=w.matchup,my=S.me?.team?.id
 function teamView(){const m=S.view.matchup,l=S.league;if(!m)return '<section class="card"><h2>My Team</h2><p>You have a bye this week.</p></section>';return lineup(m,l)}
 function liveForTeam(id,matchupId=S.view.matchup?.id){const mm=S.live?.matchups?.find(x=>x.id===matchupId);return mm?.teams?.find(x=>x.id===id)||null}
 function matchupsView(){const rows=S.league.weeks.find(w=>w.week===S.week)?.matchups||[],mine=S.me?.team?.id;let out='<section class="card"><div class="bar"><div><h2>Matchups</h2><p class="muted">All matchups, organized by group. Live scores refresh automatically during games.</p></div><span class="pill">'+esc(S.view.week.status.toUpperCase())+'</span></div>';rows.forEach(m=>{const a=S.league.teams.find(t=>t.id===m.a),b=m.b&&S.league.teams.find(t=>t.id===m.b),mineHere=m.a===mine||m.b===mine,la=liveForTeam(m.a,m.id),lb=m.b?liveForTeam(m.b,m.id):null;out+='<div class="mini-match '+(mineHere?"selected":"")+'"><div class="eyebrow">'+esc((S.league.groups||[]).find(g=>g.id===m.groupId)?.name||"GROUP")+(mineHere?" · YOUR MATCHUP":"")+'</div><div class="duel"><div><strong>'+esc(a?.name||"BYE")+'</strong><span class="muted">'+(la?.score!=null?la.score:(m.result?.points?.[m.a]??"—"))+'</span><small class="muted">'+(la?.submitted?"Submitted":"")+'</small></div><span class="vs">VS</span><div><strong>'+esc(b?.name||"BYE")+'</strong><span class="muted">'+(b?(lb?.score!=null?lb.score:(m.result?.points?.[m.b]??"—")):"")+'</span><small class="muted">'+(lb?.submitted?"Submitted":"")+'</small></div></div></div>'});return out+'</section>'}
-function standingsView(){return '<section class="card"><h2>Group Standings</h2><p class="muted">Each group competes against its own group schedule.</p>'+((S.league.groups||[]).map(g=>'<div class="group-card"><div class="bar"><h3>'+esc(g.name)+'</h3><span class="pill">'+g.teamIds.length+' teams</span></div><table class="standings"><tr><th>#</th><th>Team</th><th>W</th><th>L</th><th>T</th><th>PF</th></tr>'+g.standings.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+r.w+'</td><td>'+r.l+'</td><td>'+r.t+'</td><td>'+r.pf+'</td></tr>').join("")+'</table></div>').join(""))+'</section>'}
+function standingsView(){
+  const week=S.league.weeks.find(w=>w.week===S.week)||{};
+  const teams=S.league.teams||[];
+  const teamById=new Map(teams.map(t=>[t.id,t]));
+  const groupById=new Map((S.league.groups||[]).map(g=>[g.id,g]));
+  const weekly=new Map(teams.map(t=>[t.id,{teamId:t.id,name:t.name,w:0,l:0,t:0,pf:0,pa:0}]));
+  for(const m of week.matchups||[]){
+    if(m.b===null) continue;
+    const a=weekly.get(m.a), b=weekly.get(m.b);
+    const live=S.live?.matchups?.find(x=>x.id===m.id);
+    const la=live?.teams?.find(x=>x.id===m.a), lb=live?.teams?.find(x=>x.id===m.b);
+    const pa=m.result?.points?.[m.a]??la?.score, pb=m.result?.points?.[m.b]??lb?.score;
+    if(pa==null||pb==null) continue;
+    a.pf=Number(pa); a.pa=Number(pb); b.pf=Number(pb); b.pa=Number(pa);
+    if(pa===pb){a.t++;b.t++;}else if(pa>pb){a.w++;b.l++;}else{b.w++;a.l++;}
+  }
+  const sortRows=rows=>rows.sort((a,b)=>b.w+b.t/2-(a.w+a.t/2)||b.pf-a.pf);
+  const table=(rows,points)=>'<table class="standings"><tr><th>#</th><th>Team</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>Pts</th></tr>'+rows.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+r.w+'</td><td>'+r.l+'</td><td>'+r.t+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td><td>'+((r.w*3)+r.t)+'</td></tr>').join("")+'</table>';
+  let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Weekly group competition and overall league standings.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
+  out+='<div class="group-card"><h3>Group Standings — Week '+S.week+'</h3><p class="muted">Your group’s weekly standings. Pts = 3 for a win, 1 for a tie.</p>';
+  for(const g of S.league.groups||[]){
+    const rows=sortRows(g.teamIds.map(id=>weekly.get(id)));
+    out+='<div style="margin-top:14px"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+g.teamIds.length+' teams</span></div>'+table(rows,true)+'</div>';
+  }
+  out+='</div><div class="group-card"><h3>League Standings</h3><p class="muted">Season totals across all completed weeks.</p>';
+  const overall=sortRows((S.league.standings||[]).map(r=>({...r})));
+  out+=table(overall,true)+'</div></section>';
+  return out;
+}
 function injuryLabel(p){const s=String(p.injuryStatus||"healthy").toLowerCase();if(s==="healthy")return '<span class="good">Healthy</span>';if(s==="questionable")return '<span class="err">Q — Questionable</span>';return '<span class="err">'+esc(s.replaceAll("_"," "))+'</span>'}
 function playersView(){const pool=S.view.matchup?.pool||[];return '<section class="card"><h2>Your Group Player Pool</h2><p class="muted">Every team in your group receives this same unique pool. Out/IR/inactive players are excluded; questionable players are clearly marked.</p><div class="grid">'+pool.map(p=>'<div class="player"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team)+' · '+p.proj+' proj · '+injuryLabel(p)+'</small></span><b>'+money(p.salary)+'</b></div>').join("")+'</div></section>'}
 function rulesView(){return '<section class="card"><h2>How Capped Works</h2><ol><li>Build an 8-player lineup while staying under the salary cap.</li><li>Your league is divided into groups.</li><li>Each group receives its own unique player pool and salaries.</li><li>Teams compete only against opponents in their own group.</li><li>Healthy and questionable players can appear; out, IR and inactive players are excluded.</li><li>Submit before the weekly lock. Live scores update automatically while games are active.</li></ol><h3>Roster</h3><p>1 QB · 2 RB · 3 WR · 2 FLEX (RB/WR/TE)</p><h3>CAP’D</h3><p>If your lineup exceeds the salary cap, CAPPED flags it immediately and prevents submission.</p></section>'}
