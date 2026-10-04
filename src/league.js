@@ -54,7 +54,7 @@ export function createLeague(input) {
   if (names.length < 2 || names.length > 20) throw new ApiError(400, 'A league needs 2 to 20 teams');
   if (names.some((n) => n.length > 40)) throw new ApiError(400, 'Team names are 40 characters max');
   if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) throw new ApiError(400, 'Team names must be unique');
-  const teams = names.map((n, i) => ({ id: `t${i + 1}`, name: n, code: randomString(8), isCommish: i === 0 }));
+  const teams = names.map((n, i) => ({ id: `t${i + 1}`, name: n, code: randomString(8), isCommish: i === 0, notifications: { email: true, sms: false } }));
   const groupCount = wholeNumber(input.groupCount ?? (teams.length >= 8 ? 2 : 1), 1, Math.min(4, teams.length), 'Groups');
   const groups = Array.from({length: groupCount}, (_, i) => ({id:`g${i+1}`,name:`Group ${String.fromCharCode(65+i)}`,teamIds:[]}));
   teams.forEach((team,i)=>groups[i % groupCount].teamIds.push(team.id));
