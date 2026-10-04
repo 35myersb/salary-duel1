@@ -36,7 +36,7 @@ async function historicalProjections(season, week, players){
   }
   return players.map(p=>{
     const avg=counts.has(p.player_id)?totals.get(p.player_id)/counts.get(p.player_id):0;
-    return {...p,proj:Number(avg.toFixed(1))};
+    return {...p,proj:Number(avg.toFixed(1)),injuryStatus:p.injuryStatus||null};
   });
 }
 
@@ -71,7 +71,7 @@ export default {
   const historical=await historicalProjections(s,w,metaPlayers);
   return historical
     .filter(p=>p.proj>=2)
-    .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,injuryStatus:p.injury_status||null}));
+    .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,injuryStatus:p.injuryStatus||null}));
  },
  async getActuals(s,w,ids){
   const items=await getJSON(statsEndpoint(s,w));
