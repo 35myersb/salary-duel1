@@ -48,7 +48,8 @@ export default {
     player_id:id,
     full_name:p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" "),
     position:p.position,
-    team:p.team
+    team:p.team,
+    injuryStatus:p.injury_status||p.injury_statuses?.[0]||null
   })).filter(p=>POS.includes(p.position)&&p.team);
   
   let projected=[];
@@ -63,14 +64,14 @@ export default {
     return projected.map(i=>{
       const meta=byId.get(i.player_id)||{};
       const stats=i.stats||i;
-      return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,proj:fantasy(stats)};
+      return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,proj:fantasy(stats),injuryStatus:meta.injuryStatus||null};
     }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2);
   }
 
   const historical=await historicalProjections(s,w,metaPlayers);
   return historical
     .filter(p=>p.proj>=2)
-    .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj}));
+    .map(p=>({id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,injuryStatus:p.injury_status||null}));
  },
  async getActuals(s,w,ids){
   const items=await getJSON(statsEndpoint(s,w));
