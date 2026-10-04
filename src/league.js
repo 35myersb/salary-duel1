@@ -186,7 +186,7 @@ export function groupStandings(league, groupId) {
   const ids=new Set(getGroups(league).find(g=>g.id===groupId)?.teamIds||[]);
   return standings(league).filter(r=>ids.has(r.teamId));
 }
-export function openWeek(league, weekNo, players) {
+export function openWeek(league, weekNo, players, lockAt = null) {
   const w = getWeek(league, weekNo); if (w.status !== 'pending') throw new ApiError(409, 'That week is already open');
   for (const group of getGroups(league)) {
     const pool=buildPool(players, seededRng(`${league.id}-${league.season}-${w.week}-${group.id}`));
@@ -194,6 +194,7 @@ export function openWeek(league, weekNo, players) {
     for (const m of w.matchups) if (m.groupId===group.id && m.b!==null) m.pool=pool.map(p=>({...p}));
   }
   w.poolReadyAt = new Date().toISOString();
+  w.lockAt = lockAt || null;
   w.status = "open";
 }
 export function validateLineup(raw, pool, budget) {
