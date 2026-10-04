@@ -113,7 +113,7 @@ function buildPool(players, rng) {
   for (const pos of Object.keys(POOL_SIZES)) {
     const candidates = players.filter((p) => p.pos === pos && !["out","ir","doubtful","inactive","injured_reserve"].includes(String(p.injuryStatus||"").toLowerCase())).sort((a, b) => b.proj - a.proj).slice(0, POOL_CANDIDATES[pos]);
     if (candidates.length < POOL_SIZES[pos]) throw new ApiError(502, `Not enough ${pos}s available from the data source to build a pool`);
-    for (const p of shuffle(candidates, rng).slice(0, POOL_SIZES[pos])) pool.push({ id: p.id, name: p.name, pos: p.pos, team: p.team, proj: p.proj, salary: salaryFromProjection(p.proj), injuryStatus: p.injuryStatus || "healthy" });
+    for (const p of shuffle(candidates, rng).slice(0, POOL_SIZES[pos])) pool.push({ id: p.id, name: p.name, pos: p.pos, team: p.team, proj: p.proj, salary: salaryFromProjection(p.proj, p.pos, { roleScore: p.roleScore, matchupBoost: p.matchupBoost, consistencyBoost: p.consistencyBoost }), injuryStatus: p.injuryStatus || "healthy" });
   }
   const order = Object.keys(POOL_SIZES); return pool.sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.salary - a.salary);
 }
