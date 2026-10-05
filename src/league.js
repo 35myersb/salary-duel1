@@ -41,7 +41,7 @@ export function createLeague(input) {
   const startWeek = wholeNumber(input.startWeek, 1, 18, 'First NFL week');
   const numWeeks = wholeNumber(input.numWeeks, 1, 18, 'Number of weeks');
   if (startWeek + numWeeks - 1 > 18) throw new ApiError(400, 'The schedule runs past NFL week 18');
-  const budget = wholeNumber(input.budget ?? 50000, MIN_BUDGET, MAX_BUDGET, 'Budget');
+  const budget = wholeNumber(input.budget ?? 55000, MIN_BUDGET, MAX_BUDGET, 'Budget');
   const provider = input.provider ?? 'mock';
   if (!PROVIDER_NAMES.includes(provider)) throw new ApiError(400, 'Unknown data source');
   const sIn = input.standoff ?? {};
