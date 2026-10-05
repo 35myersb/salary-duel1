@@ -89,7 +89,7 @@ function resolveStandoff(league, w, m) {
   }
   sd.outcome = outcome;
 }
-export function lockWeek(league, w) { w.status = 'locked'; for (const m of w.matchups) if (m.standoff && !m.standoff.outcome) resolveStandoff(league, w, m); }
+export function lockWeek(league,w){w.status='locked';}
 function buildPool(players, rng) {
   const pool = [];
   const unavailable = new Set(["out","ir","doubtful","inactive","injured_reserve"]);
