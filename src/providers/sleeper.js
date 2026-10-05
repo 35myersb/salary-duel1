@@ -41,8 +41,19 @@ async function historicalProjections(season, week, players){
 }
 
 
-function addOpponents(players, season, week){
-  return players;
+async function addOpponents(players, season, week){
+  try {
+    const games=await cached("schedule-"+season,21600000,()=>getJSON("https://api.sleeper.app/schedule/nfl/regular/"+season));
+    const weekGames=(Array.isArray(games)?games:[]).filter(g=>Number(g.week)===Number(week));
+    const byTeam=new Map();
+    for(const g of weekGames){
+      if(g.home)byTeam.set(g.home,{opponent:g.away,homeAway:"vs"});
+      if(g.away)byTeam.set(g.away,{opponent:g.home,homeAway:"@"});
+    }
+    return players.map(p=>({...p,...(byTeam.get(p.team)||{})}));
+  } catch {
+    return players;
+  }
 }
 export default {
  name:"sleeper",label:"Real NFL data (Sleeper)",
@@ -65,11 +76,11 @@ export default {
   
   if (projected.length) {
     const byId=new Map(metaPlayers.map(p=>[p.player_id,p]));
-    return projected.map(i=>{
+    return addOpponents(projected.map(i=>{
       const meta=byId.get(i.player_id)||{};
       const stats=i.stats||i;
       return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,proj:fantasy(stats),injuryStatus:meta.injuryStatus||null};
-    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2);
+    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2),s,w);
   }
 
   const historical=await historicalProjections(s,w,metaPlayers);
