@@ -1,4 +1,4 @@
-<style>.score-number{transition:transform .35s ease}.score-up{color:#16a34a;animation:scoreUp .9s ease}.score-down{color:#dc2626;animation:scoreDown .9s ease}@keyframes scoreUp{0%{transform:scale(1)}35%{transform:scale(1.18)}100%{transform:scale(1)}}@keyframes scoreDown{0%{transform:scale(1)}35%{transform:scale(.9)}100%{transform:scale(1)}}</style>const BUILD="20261004-impact-1";
+const BUILD="20261004-impact-1";
 const app=document.getElementById("app");
 const S={id:localStorage.sd_id||"",code:localStorage.sd_code||"",week:Number(localStorage.sd_week||1),viewName:"dashboard",league:null,me:null,view:null,matchups:null,submissions:null,live:null,lineup:{QB:[],RB:[],WR:[],FLEX:[]},poolReadySeen:localStorage.sd_pool_ready||""};
 let liveTimer=null;
