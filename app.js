@@ -39,15 +39,23 @@ function liveForTeam(id,matchupId=S.view.matchup?.id){const mm=S.live?.matchups?
 function matchupsView(){
  const comps=S.matchups?.matchups||[],liveRows=S.live?.matchups||[],mine=S.me?.team?.id;
  const teamLive=(m,id)=>liveRows.find(x=>x.id===m.id)?.teams?.find(x=>x.id===id);
- const poolFor=m=>m.pool||S.matchups?.matchups?.find(x=>x.id===m.id)?.pool||[];
- const gameFor=player=>player?.team?(S.live?.schedule||[]).find(g=>g.home===player.team||g.away===player.team):null;
- const gameState=g=>{if(!g)return{label:"STATUS UNKNOWN",key:"unknown"};const s=String(g.status||"").toLowerCase().replace(/[_-]/g," ");if(/postponed|cancelled|canceled/.test(s))return{label:"NOT PLAYING",key:"final"};if(/final|complete|ended/.test(s))return{label:"FINAL",key:"final"};if(/halftime|half time|half/.test(s))return{label:"HALFTIME",key:"halftime"};const k=Date.parse(g.date);if(Number.isFinite(k)&&Date.now()<k)return{label:"UPCOMING",key:"upcoming"};return{label:"LIVE",key:"live"}};
- const playerBreakdown=(m,t)=>{if(!t?.lineup)return"";const pool=poolFor(m),ids=[...(t.lineup.QB||[]),...(t.lineup.FLEX||[])];return ids.map(id=>{const p=pool.find(x=>x.id===id);if(!p)return"";const g=gameFor(p),gs=gameState(g),raw=Number(t.playerPoints?.[id]||0),ace=t.lineup.multipliers?.ace===id,impact=t.lineup.multipliers?.impact===id,pts=raw*(ace?2:impact?1.5:1),opp=g?(p.team===g.home?g.away:g.home):"";return '<div class="live-player-row"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team||'')+(opp?' · '+(p.team===g.home?'vs ':'@ ')+esc(opp):'')+(ace?' ⭐ ACE 2×':impact?' 🔥 IMPACT 1.5×':'')+'</small></span><strong>'+pts.toFixed(1)+' <em class="game-status '+gs.key+'">'+gs.label+'</em></strong></div>'}).join("")};
- const allGames=S.live?.schedule||[];const gameStatuses=allGames.map(g=>String(g.status||"").toLowerCase());const hasLive=gameStatuses.some(s=>/live|in_progress|in progress|halftime|half/.test(s));const allFinal=allGames.length>0&&gameStatuses.every(s=>/final|complete|ended/.test(s));const overallLabel=allFinal?"FINAL":hasLive?"LIVE":"UPCOMING";let out='<section class="card live-scoreboard"><div class="bar"><div><h2>Group Competition</h2><p class="muted">Every team competes within its group.</p></div><span class="pill live-pill">● '+overallLabel+'</span></div>';
- let lastGroup=null;
- comps.forEach(m=>{const g=(S.league.groups||[]).find(x=>x.id===m.groupId),lr=liveRows.find(x=>x.id===m.id),teams=(m.teamIds||[]).map(id=>teamLive(m,id)||{id,name:S.league.teams.find(t=>t.id===id)?.name||"Team"});if(g?.id!==lastGroup){lastGroup=g?.id}const ranked=teams.map(t=>({t,score:t.score})).sort((a,b)=>(b.score??-1)-(a.score??-1));out+='<div class="live-match"><div class="match-head"><span class="muted">'+esc(g?.name||"GROUP")+'</span><span class="muted">'+(m.result?'FINAL':overallLabel)+'</span></div><div class="group-scoreboard">'+ranked.map((r,i)=>'<div class="group-score-row '+(r.t.id===mine?"my-match":"")+'"><span><b>'+ (i+1)+'. '+esc(r.t.name)+'</b>'+(r.t.id===mine?' <small>YOU</small>':'')+'</span><strong>'+ (r.score!=null?Number(r.score).toFixed(1):"—")+'</strong><span class="placement-points">'+(m.result?.placementPoints?.[r.t.id]||"—")+' pts</span></div>').join("")+'</div>';
- const mineTeam=teams.find(x=>x.id===mine);if(mineTeam?.lineup)out+='<details class="live-details" open><summary>My player scoring</summary>'+playerBreakdown(m,mineTeam)+'</details>';out+='</div>'});
- out+='<p class="muted live-updated">Scores refresh every 15 seconds. Rankings and placement points update automatically.</p></section>';return out;
+ const allGames=S.live?.schedule||[];
+ const gameStatuses=allGames.map(g=>String(g.status||"").toLowerCase());
+ const hasLive=gameStatuses.some(s=>/live|in_progress|in progress|halftime|half/.test(s));
+ const allFinal=allGames.length>0&&gameStatuses.every(s=>/final|complete|ended/.test(s));
+ const overallLabel=allFinal?"FINAL":hasLive?"LIVE":"UPCOMING";
+ let out='<section class="card live-scoreboard"><div class="bar"><div><h2>Group Competition</h2><p class="muted">Every team competes within its group.</p></div><span class="pill live-pill">● '+overallLabel+'</span></div>';
+ comps.forEach(m=>{
+  const g=(S.league.groups||[]).find(x=>x.id===m.groupId);
+  const teams=(m.teamIds||[]).map(id=>teamLive(m,id)||{id,name:S.league.teams.find(t=>t.id===id)?.name||"Team"});
+  const ranked=teams.map(t=>({t,score:t.score})).sort((a,b)=>(b.score??-1)-(a.score??-1));
+  out+='<div class="live-match"><div class="match-head"><span class="muted">'+esc(g?.name||"GROUP")+'</span><span class="muted">'+(m.result?'FINAL':overallLabel)+'</span></div>';
+  out+='<div class="group-scoreboard">'+ranked.map((r,i)=>'<div class="group-score-row '+(r.t.id===mine?"my-match":"")+'"><span><b>'+ (i+1)+'. '+esc(r.t.name)+'</b>'+(r.t.id===mine?' <small>YOU</small>':'')+'</span><strong>'+ (r.score!=null?Number(r.score).toFixed(1):"—")+'</strong><span class="placement-points">'+(m.result?.placementPoints?.[r.t.id]||"—")+' pts</span></div>').join("")+'</div>';
+  if(mine===S.me?.team?.id) out+='<p class="muted matchup-hint">Your full lineup and player-by-player scoring are on <b>My Team</b>.</p>';
+  out+='</div>';
+ });
+ out+='<p class="muted live-updated">Scores refresh every 15 seconds. Rankings and placement points update automatically.</p></section>';
+ return out;
 }
 function liveView(){return matchupsView().replace("<h2>Live Matchups</h2>","<h2>Live Scoreboard</h2>")}
 function standingsView(){
