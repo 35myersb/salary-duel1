@@ -22,6 +22,11 @@ export default async function(req,res){
  const w=L.getWeek(l,p[4]),provider=getProvider(l.provider),ids=L.poolIds(w);
  const actuals=await provider.getActuals(l.season,w.nflWeek,ids);
  const schedule=provider.getSchedule?await provider.getSchedule(l.season,w.nflWeek):[];
+ const allGamesFinal=Array.isArray(schedule)&&schedule.length>0&&schedule.every(g=>/final|complete|ended/i.test(String(g.status||"")));
+ if(w.status==="locked"&&allGamesFinal){
+  L.scoreWeek(l,p[4],actuals);
+  l.__version=await store.saveLeague(l,code(req),l.__version);
+ }
  const matchups=w.matchups.map(m=>{
   if(m.b===null)return {id:m.id,bye:true,teams:[]};
   const locked=["locked","final"].includes(w.status);
