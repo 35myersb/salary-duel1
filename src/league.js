@@ -3,7 +3,7 @@ import { ApiError, seededRng, shuffle, round2 } from './util.js';
 import { salaryFromProjection } from './pricing.js';
 import { PROVIDER_NAMES } from './providers/index.js';
 
-export const SLOTS = { QB: 1, RB: 2, WR: 3, FLEX: 2 };
+export const SLOTS = { QB: 1, FLEX: 7 };
 export const SLOT_NAMES = Object.keys(SLOTS);
 export const FLEX_POS = ['RB', 'WR', 'TE'];
 export const POOL_SIZES = { QB: 8, RB: 14, WR: 18, TE: 10 };
@@ -171,9 +171,7 @@ function cheapestCompleteLineup(pool) {
     }
   };
   take("QB", 1, p => p.pos === "QB");
-  take("RB", 2, p => p.pos === "RB");
-  take("WR", 3, p => p.pos === "WR");
-  take("FLEX", 2, p => FLEX_POS.includes(p.pos));
+  take("FLEX", 7, p => FLEX_POS.includes(p.pos));
   const ids = SLOT_NAMES.flatMap(s => lineup[s]);
   return ids.length === TOTAL_SLOTS
     ? ids.reduce((sum, id) => sum + (pool.find(p => p.id === id)?.salary || 0), 0)
