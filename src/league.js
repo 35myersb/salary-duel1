@@ -247,13 +247,65 @@ export function scoreWeek(league, weekNo, actuals) {
   w.status = 'final';
 }
 export function standings(league) {
-  const rows = new Map(league.teams.map((t) => [t.id, { teamId: t.id, name: t.name, w: 0, l: 0, t: 0, pf: 0, pa: 0 }]));
+  const groups = getGroups(league);
+  const groupByTeam = new Map();
+  for (const g of groups) for (const teamId of g.teamIds) groupByTeam.set(teamId, g.id);
+
+  const rows = new Map(league.teams.map((t) => [
+    t.id,
+    { teamId: t.id, name: t.name, standingsPoints: 0, pf: 0, pa: 0 }
+  ]));
+
   for (const w of league.weeks) if (w.status === 'final') for (const m of w.matchups) {
     if (!m.result || m.result.bye) continue;
-    const ra = rows.get(m.a), rb = rows.get(m.b), pa = m.result.points[m.a], pb = m.result.points[m.b];
-    ra.pf += pa; ra.pa += pb; rb.pf += pb; rb.pa += pa;
-    if (m.result.winner === 'tie') { ra.t++; rb.t++; } else if (m.result.winner === m.a) { ra.w++; rb.l++; } else { rb.w++; ra.l++; }
+    const ra = rows.get(m.a), rb = rows.get(m.b);
+    const pa = Number(m.result.points?.[m.a] || 0), pb = Number(m.result.points?.[m.b] || 0);
+    ra.pf += pa; ra.pa += pb;
+    rb.pf += pb; rb.pa += pa;
+    if (m.result.winner === 'tie') {
+      ra.standingsPoints += 1;
+      rb.standingsPoints += 1;
+    } else if (m.result.winner === m.a) {
+      ra.standingsPoints += 3;
+    } else {
+      rb.standingsPoints += 3;
+    }
   }
-  return [...rows.values()].map((r) => ({ ...r, pf: round2(r.pf), pa: round2(r.pa) }))
-    .sort((x, y) => y.w + y.t / 2 - (x.w + x.t / 2) || y.pf - x.pf);
+
+  const headToHeadPoints = new Map([...rows.keys()].map(id => [id, 0]));
+  for (const w of league.weeks) if (w.status === 'final') for (const m of w.matchups) {
+    if (!m.result || m.result.bye) continue;
+    const a = rows.get(m.a), b = rows.get(m.b);
+    if (!a || !b || groupByTeam.get(m.a) !== groupByTeam.get(m.b)) continue;
+    if (m.result.winner === 'tie') {
+      headToHeadPoints.set(m.a, headToHeadPoints.get(m.a) + 1);
+      headToHeadPoints.set(m.b, headToHeadPoints.get(m.b) + 1);
+    } else if (m.result.winner === m.a) {
+      headToHeadPoints.set(m.a, headToHeadPoints.get(m.a) + 3);
+    } else {
+      headToHeadPoints.set(m.b, headToHeadPoints.get(m.b) + 3);
+    }
+  }
+
+  const enriched = [...rows.values()].map((r) => ({
+    ...r,
+    standingsPoints: r.standingsPoints,
+    pf: round2(r.pf),
+    pa: round2(r.pa)
+  }));
+
+  const sorted = enriched.sort((x, y) => {
+    if (y.standingsPoints !== x.standingsPoints) return y.standingsPoints - x.standingsPoints;
+
+    const sameGroup = groupByTeam.get(x.teamId) && groupByTeam.get(x.teamId) === groupByTeam.get(y.teamId);
+    if (sameGroup) {
+      const h2hX = headToHeadPoints.get(x.teamId) || 0;
+      const h2hY = headToHeadPoints.get(y.teamId) || 0;
+      if (h2hY !== h2hX) return h2hY - h2hX;
+    }
+
+    return y.pf - x.pf;
+  });
+
+  return sorted.map((r) => ({ ...r, pts: r.standingsPoints, h2hPts: headToHeadPoints.get(r.teamId) || 0 }));
 }
