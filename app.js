@@ -61,9 +61,7 @@ function liveView(){return matchupsView().replace("<h2>Live Matchups</h2>","<h2>
 function standingsView(){
   const week=S.league.weeks.find(w=>w.week===S.week)||{};
   const teams=S.league.teams||[];
-  const teamById=new Map(teams.map(t=>[t.id,t]));
-  const groupById=new Map((S.league.groups||[]).map(g=>[g.id,g]));
-  const weekly=new Map(teams.map(t=>[t.id,{teamId:t.id,name:t.name,w:0,l:0,t:0,pf:0,pa:0}]));
+  const weekly=new Map(teams.map(t=>[t.id,{teamId:t.id,name:t.name,pts:0,pf:0}]));
   for(const m of week.matchups||[]){
     if(m.b===null) continue;
     const a=weekly.get(m.a), b=weekly.get(m.b);
@@ -71,20 +69,20 @@ function standingsView(){
     const la=live?.teams?.find(x=>x.id===m.a), lb=live?.teams?.find(x=>x.id===m.b);
     const pa=m.result?.points?.[m.a]??la?.score, pb=m.result?.points?.[m.b]??lb?.score;
     if(pa==null||pb==null) continue;
-    a.pf=Number(pa); a.pa=Number(pb); b.pf=Number(pb); b.pa=Number(pa);
-    if(pa===pb){a.t++;b.t++;}else if(pa>pb){a.w++;b.l++;}else{b.w++;a.l++;}
+    a.pf=Number(pa); b.pf=Number(pb);
+    if(pa===pb){a.pts+=1;b.pts+=1;}else if(pa>pb){a.pts+=3;}else{b.pts+=3;}
   }
-  const sortRows=rows=>rows.sort((a,b)=>b.w+b.t/2-(a.w+a.t/2)||b.pf-a.pf);
-  const table=(rows,points)=>'<table class="standings"><tr><th>#</th><th>Team</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>Pts</th></tr>'+rows.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+r.w+'</td><td>'+r.l+'</td><td>'+r.t+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td><td>'+((r.w*3)+r.t)+'</td></tr>').join("")+'</table>';
-  let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Weekly group competition and overall league standings.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
-  out+='<div class="group-card"><h3>Group Standings — Week '+S.week+'</h3><p class="muted">Your group’s weekly standings. Pts = 3 for a win, 1 for a tie.</p>';
+  const sortRows=rows=>rows.sort((a,b)=>b.pts-a.pts||b.pf-a.pf);
+  const table=rows=>'<table class="standings"><tr><th>#</th><th>Team</th><th>PF</th><th>Pts</th></tr>'+rows.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td><td>'+r.pts+'</td></tr>').join("")+'</table>';
+  let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Win = 3 pts · Tie = 1 pt · Loss = 0 pts.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
+  out+='<div class="group-card"><h3>Group Standings — Week '+S.week+'</h3><p class="muted">Teams compete only within their group.</p>';
   for(const g of S.league.groups||[]){
     const rows=sortRows(g.teamIds.map(id=>weekly.get(id)));
-    out+='<div style="margin-top:14px"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+g.teamIds.length+' teams</span></div>'+table(rows,true)+'</div>';
+    out+='<div style="margin-top:14px"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+g.teamIds.length+' teams</span></div>'+table(rows)+'</div>';
   }
-  out+='</div><div class="group-card"><h3>League Standings</h3><p class="muted">Season totals across all completed weeks.</p>';
-  const overall=sortRows((S.league.standings||[]).map(r=>({...r})));
-  out+=table(overall,true)+'</div></section>';
+  out+='</div><div class="group-card"><h3>League Standings</h3><p class="muted">Season standings are ranked by total standings points. Ties within the same group use head-to-head first, then total season points.</p>';
+  const overall=sortRows((S.league.standings||[]).map(r=>({teamId:r.teamId,name:r.name,pts:Number(r.standingsPoints??r.pts??0),pf:Number(r.pf||0)})));
+  out+=table(overall)+'</div></section>';
   return out;
 }
 function injuryLabel(p){const s=String(p.injuryStatus||"healthy").toLowerCase();if(s==="healthy")return '<span class="good">Healthy</span>';if(s==="questionable")return '<span class="err">Q — Questionable</span>';return '<span class="err">'+esc(s.replaceAll("_"," "))+'</span>'}
