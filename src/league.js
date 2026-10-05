@@ -43,6 +43,24 @@ export function createLeague(input) {
   const weeks=Array.from({length:numWeeks},(_,idx)=>({week:idx+1,nflWeek:startWeek+idx,status:'pending',lockAt:null,matchups:groups.map(g=>({id:`w${idx+1}${g.id}`,groupId:g.id,teamIds:[...g.teamIds],pool:null,lineups:{},result:null}))}));
   return{id:makeLeagueId(),name,season,startWeek,numWeeks,budget,provider,groups,createdAt:new Date().toISOString(),teams,weeks};
 }
+export function migrateLeague(league) {
+  for (const w of league.weeks || []) {
+    if (!Array.isArray(w.matchups) || !w.matchups.some(m => m.a !== undefined || m.b !== undefined)) continue;
+    const byGroup = new Map();
+    for (const old of w.matchups) {
+      const gid = old.groupId || getGroups(league).find(g => g.teamIds.includes(old.a))?.id;
+      if (!gid) continue;
+      let m = byGroup.get(gid);
+      if (!m) { m = { id: `w${w.week}${gid}`, groupId: gid, teamIds: [], pool: old.pool || null, lineups: {}, result: null }; byGroup.set(gid,m); }
+      for (const id of [old.a, old.b].filter(Boolean)) if (!m.teamIds.includes(id)) m.teamIds.push(id);
+      if (!m.pool && old.pool) m.pool = old.pool;
+      Object.assign(m.lineups, old.lineups || {});
+      if (old.result && !m.result) m.result = null;
+    }
+    if (byGroup.size) w.matchups = [...byGroup.values()];
+  }
+  return league;
+}
 export function getWeek(league, weekNo) {
   const w = league.weeks.find((x) => x.week === Number(weekNo)); if (!w) throw new ApiError(404, 'No such week'); return w;
 }
