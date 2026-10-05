@@ -40,6 +40,10 @@ async function historicalProjections(season, week, players){
   });
 }
 
+
+function addOpponents(players, season, week){
+  return players;
+}
 export default {
  name:"sleeper",label:"Real NFL data (Sleeper)",
  async getPlayers(s,w){
