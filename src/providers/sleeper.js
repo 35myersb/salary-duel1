@@ -85,7 +85,22 @@ export default {
     return new Date(firstKickoff-5*60*1000).toISOString();
   } catch { return null; }
  },
- async getSchedule(s,w){try{const games=await cached("schedule-"+s+"-"+w,30000,()=>getJSON("https://api.sleeper.app/schedule/nfl/regular/"+s));return (Array.isArray(games)?games:[]).filter(g=>Number(g.week)===Number(w)).map(g=>({id:g.game_id||g.game_id_str,home:g.home,away:g.away,date:g.date,status:g.status||null}));}catch{return [];}},
+ async getSchedule(s,w){
+ try{
+  const games=await cached("schedule-"+s,30000,()=>getJSON("https://api.sleeper.app/schedule/nfl/regular/"+s));
+  return (Array.isArray(games)?games:[])
+   .filter(g=>Number(g.week)===Number(w))
+   .map(g=>({
+    id:g.game_id||g.game_id_str,
+    home:g.home,
+    away:g.away,
+    date:g.date,
+    status:g.status||null,
+    homeScore:Number(g.home_score??g.home_score??0),
+    awayScore:Number(g.away_score??g.away_score??0)
+   }));
+ }catch{return [];}
+},
  async getActuals(s,w,ids){
   const items=await getJSON(statsEndpoint(s,w));
   const map=new Map((Array.isArray(items)?items:[]).map(i=>["sl-"+i.player_id,fantasy(i.stats||i)]));
