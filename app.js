@@ -43,9 +43,10 @@ function matchupsView(){
  };
  const gameState=game=>{
   if(!game)return {label:"STATUS UNKNOWN",key:"unknown"};
-  const status=String(game.status||"").toLowerCase();
+  const status=String(game.status||"").toLowerCase().replace(/[_-]/g," ");
+  if(/postponed|cancelled|canceled/.test(status))return {label:"NOT PLAYING",key:"final"};
   if(/final|complete|ended/.test(status))return {label:"FINAL",key:"final"};
-  if(/halftime|half/.test(status))return {label:"HALFTIME",key:"halftime"};
+  if(/halftime|half time|half/.test(status))return {label:"HALFTIME",key:"halftime"};
   const kickoff=Date.parse(game.date);
   if(Number.isFinite(kickoff)&&Date.now()<kickoff)return {label:"UPCOMING",key:"upcoming"};
   if(/progress|live|active|playing|in progress/.test(status))return {label:"LIVE",key:"live"};
