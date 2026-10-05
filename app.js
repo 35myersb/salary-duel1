@@ -49,7 +49,7 @@ function matchupsView(){
   const g=(S.league.groups||[]).find(x=>x.id===m.groupId);
   const teams=(m.teamIds||[]).map(id=>teamLive(m,id)||{id,name:S.league.teams.find(t=>t.id===id)?.name||"Team"});
   const ranked=teams.map(t=>({t,score:t.score})).sort((a,b)=>(b.score??-1)-(a.score??-1));
-  out+='<div class="live-match"><div class="match-head"><span class="muted">'+esc(g?.name||"GROUP")+'</span><span class="muted">'+(m.result?'FINAL':overallLabel)+'</span></div>';
+  out+='<div class="live-match"><div class="match-head"><span class="muted"><b>'+esc(g?.name||"GROUP")+'</b></span></div>';
   out+='<div class="group-scoreboard">'+ranked.map((r,i)=>'<div class="group-score-row '+(r.t.id===mine?"my-match":"")+'"><span><b>'+ (i+1)+'. '+esc(r.t.name)+'</b>'+(r.t.id===mine?' <small>YOU</small>':'')+'</span><strong>'+ (r.score!=null?Number(r.score).toFixed(1):"—")+'</strong><span class="placement-points">'+(m.result?.placementPoints?.[r.t.id]||"—")+' pts</span></div>').join("")+'</div>';
   if((m.teamIds||[]).includes(mine)) out+='<p class="muted matchup-hint">Your full lineup and player-by-player scoring are on <b>My Team</b>.</p>';
   out+='</div>';
