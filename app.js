@@ -35,17 +35,29 @@ function teamView(){const m=S.view.matchup,l=S.league;if(!m)return '<section cla
 function liveForTeam(id,matchupId=S.view.matchup?.id){const mm=S.live?.matchups?.find(x=>x.id===matchupId);return mm?.teams?.find(x=>x.id===id)||null}
 function matchupsView(){
  const rows=S.league.weeks.find(w=>w.week===S.week)?.matchups||[],mine=S.me?.team?.id,liveRows=S.live?.matchups||[];
- let out='<section class="card live-scoreboard"><div class="bar"><div><h2>Live Matchups</h2><p class="muted">Scores update automatically while NFL games are active.</p></div><span class="pill live-pill">● LIVE</span></div>';
+ const poolFor=m=>m.pool||S.matchups?.matchups?.find(x=>x.id===m.id)?.pool||[];
+ const teamLive=(m,id)=>liveRows.find(x=>x.id===m.id)?.teams?.find(x=>x.id===id);
+ const playerBreakdown=(m,t)=>{
+  if(!t?.lineup)return "";
+  const pool=poolFor(m),ids=[...(t.lineup.QB||[]),...(t.lineup.FLEX||[])];
+  return ids.map(id=>{const p=pool.find(x=>x.id===id);if(!p)return "";const raw=Number(t.playerPoints?.[id]||0),ace=t.lineup.multipliers?.ace===id,impact=t.lineup.multipliers?.impact===id,mult=ace?2:impact?1.5:1,pts=raw*mult,badge=ace?" ⭐ ACE 2×":impact?" 🔥 IMPACT 1.5×":"";return '<div class="live-player-row"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team||"")+badge+'</small></span><strong>'+pts.toFixed(1)+'</strong></div>'}).join("");
+ };
+ let out='<section class="card live-scoreboard"><div class="bar"><div><h2>Live Matchups</h2><p class="muted">Live fantasy scoring across every group.</p></div><span class="pill live-pill">● LIVE</span></div>';
  let lastGroup=null;
  rows.forEach(m=>{
-  const g=(S.league.groups||[]).find(x=>x.id===m.groupId),a=S.league.teams.find(x=>x.id===m.a),b=m.b&&S.league.teams.find(x=>x.id===m.b),lr=liveRows.find(x=>x.id===m.id),la=lr?.teams?.find(x=>x.id===m.a),lb=m.b&&lr?.teams?.find(x=>x.id===m.b);
+  const g=(S.league.groups||[]).find(x=>x.id===m.groupId),a=S.league.teams.find(x=>x.id===m.a),b=m.b&&S.league.teams.find(x=>x.id===m.b),la=teamLive(m,m.a),lb=m.b&&teamLive(m,m.b);
   if(g?.id!==lastGroup){out+='<div class="eyebrow group-label">'+esc(g?.name||"GROUP")+'</div>';lastGroup=g?.id}
   const sa=la?.score??null,sb=lb?.score??null,lead=sa!=null&&sb!=null?(sa>sb?"a":sb>sa?"b":"tie"):null,my=m.a===mine||m.b===mine;
-  out+='<div class="live-match '+(my?"my-match":"")+'"><div class="match-head"><span class="muted">'+(my?"YOUR MATCHUP":"MATCHUP")+'</span><span class="muted">'+(sa!=null?"LIVE":"WAITING")+'</span></div><div class="score-row"><div class="team-score '+(lead==="a"?"leading":"")+'"><b>'+esc(a?.name||"BYE")+'</b><strong class="score-number" data-score="'+(sa??"")+'">'+(sa!=null?Number(sa).toFixed(1):"—")+'</strong></div><div class="vs">VS</div><div class="team-score '+(lead==="b"?"leading":"")+'"><b>'+esc(b?.name||"BYE")+'</b><strong class="score-number" data-score="'+(sb??"")+'">'+(sb!=null?Number(sb).toFixed(1):"—")+'</strong></div></div><div class="score-status">'+(lead==="tie"?"TIED":lead==="a"?esc(a?.name)+" WINNING":lead==="b"?esc(b?.name)+" WINNING":"Scores will appear here")+'</div></div>';
+  const remaining=t=>t?.lineup?Object.keys(t.lineup).reduce((n,k)=>k==="multipliers"?n:n+(t.lineup[k]||[]).filter(id=>!Number.isFinite(Number(t.playerPoints?.[id]))).length,0):null;
+  const ra=remaining(la),rb=remaining(lb);
+  out+='<div class="live-match '+(my?"my-match":"")+'"><div class="match-head"><span class="muted">'+(my?"YOUR MATCHUP":"MATCHUP")+'</span><span class="muted">LIVE</span></div><div class="score-row"><div class="team-score '+(lead==="a"?"leading":"")+'"><b>'+esc(a?.name||"BYE")+'</b><strong class="score-number" data-score="'+(sa??"")+'">'+(sa!=null?Number(sa).toFixed(1):"—")+'</strong><small>'+(ra!=null?ra+" player"+(ra===1?"":"s")+" remaining":"")+'</small></div><div class="vs">VS</div><div class="team-score '+(lead==="b"?"leading":"")+'"><b>'+esc(b?.name||"BYE")+'</b><strong class="score-number" data-score="'+(sb??"")+'">'+(sb!=null?Number(sb).toFixed(1):"—")+'</strong><small>'+(rb!=null?rb+" player"+(rb===1?"":"s")+" remaining":"")+'</small></div></div><div class="score-status">'+(lead==="tie"?"TIED":lead==="a"?esc(a?.name)+" WINNING":lead==="b"?esc(b?.name)+" WINNING":"LIVE")+'</div>';
+  if(la?.lineup||lb?.lineup)out+='<details class="live-details"><summary>Player scoring</summary><div class="live-player-columns">'+(la?.lineup?'<div><b>'+esc(a?.name||"Team")+'</b>'+playerBreakdown(m,la)+'</div>':"")+(lb?.lineup?'<div><b>'+esc(b?.name||"Team")+'</b>'+playerBreakdown(m,lb)+'</div>':"")+'</div></details>';
+  out+='</div>';
  });
- out+='<p class="muted live-updated" aria-live="polite">Live scoreboard refreshes every 15 seconds.</p></section>';
+ out+='<p class="muted live-updated" aria-live="polite">Scores refresh every 15 seconds. Score changes animate after each refresh.</p></section>';
  return out;
-}function liveView(){return matchupsView().replace("<h2>Live Matchups</h2>","<h2>Live Scoreboard</h2>")}
+}
+function liveView(){return matchupsView().replace("<h2>Live Matchups</h2>","<h2>Live Scoreboard</h2>")}
 function standingsView(){
   const week=S.league.weeks.find(w=>w.week===S.week)||{};
   const teams=S.league.teams||[];
