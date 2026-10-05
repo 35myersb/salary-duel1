@@ -231,7 +231,7 @@ export function scoreWeek(league,weekNo,actuals){
   for(const teamId of m.teamIds||[]){const lineup=m.lineups[teamId]||emptyLineup(),ids=SLOT_NAMES.flatMap(s=>lineup[s]||[]),ace=lineup.multipliers?.ace,impact=lineup.multipliers?.impact;points[teamId]=round2(ids.reduce((sum,id)=>sum+(actuals[id]||0)*(id===ace?2:id===impact?1.5:1),0));}
   for(const p of m.pool||[])playerPoints[p.id]=actuals[p.id]||0;
   const rankings=(m.teamIds||[]).map(id=>({teamId:id,score:points[id]||0})).sort((a,b)=>b.score-a.score||a.teamId.localeCompare(b.teamId));
-  const placementPoints={};rankings.forEach((r,i)=>placementPoints[r.teamId]=rankings.length-i);
+  const placementPoints={};let lastScore=null,lastPoints=null;rankings.forEach((r,i)=>{const pts=lastScore!==null&&r.score===lastScore?lastPoints:rankings.length-i;placementPoints[r.teamId]=pts;lastScore=r.score;lastPoints=pts;});
   m.result={points,playerPoints,placementPoints,rankings};
  }
  w.status='final';
