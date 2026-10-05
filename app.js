@@ -16,7 +16,7 @@ function effectiveGroupId(){return S.me?.team?.groupId||S.me?.groupId||derivedGr
 function effectiveGroupName(){return S.me?.team?.groupName||S.me?.groupName||derivedGroup()?.name||"—"}
 function groupPool(){const gid=effectiveGroupId();const matches=S.matchups?.matchups||[];const shared=matches.find(m=>m.groupId===gid&&Array.isArray(m.pool)&&m.pool.length);if(shared?.pool?.length)return shared.pool;const mine=S.view?.matchup?.pool;if(Array.isArray(mine)&&mine.length)return mine;const leagueWeek=S.league?.weeks?.find(w=>w.week===S.week);const fallback=leagueWeek?.matchups?.find(m=>m.groupId===gid&&Array.isArray(m.pool)&&m.pool.length);return fallback?.pool||[]}
 function groupPoolReady(){return !!S.view?.poolReadyAt||groupPool().length>0}
-function groupPoolCount(){const gid=effectiveGroupId();return (S.matchups?.matchups||[]).filter(m=>m.groupId===gid&&!m.bye&&m.pool?.length).length}
+function groupPoolCount(){const gid=effectiveGroupId();return (S.matchups?.matchups||[]).filter(m=>m.groupId===gid&&!m.teamIds?.[1]ye&&m.pool?.length).length}
 function notifyPoolReady(){if(!groupPool().length)return;const key=S.id+"-"+S.week+"-"+(S.view.poolReadyAt||"ready");if(S.poolReadySeen===key)return;S.poolReadySeen=key;localStorage.sd_pool_ready=key;if("Notification"in window&&Notification.permission==="granted")try{new Notification("CAPPED player pool is ready",{body:"Your group's unique player pool is ready. Build your lineup."})}catch{}}
 function home(msg=""){app.innerHTML=`<section class="card"><div class="hero-brand"><div class="mini-logo"><span style="font-weight:1000;color:#c9953e">C</span></div><div><h1>Play Capped</h1><p class="muted">Salary-cap fantasy football played head-to-head.</p></div></div>${msg?'<p class="err">'+esc(msg)+'</p>':""}<h2>Create a league</h2><form id="create"><input name="name" placeholder="League name" required><div class="grid"><label>Season<input name="season" type="number" value="2026"></label><label>First NFL week<input name="startWeek" type="number" value="4"></label><label>Weeks<input name="numWeeks" type="number" value="8"></label><label>Salary cap<input name="budget" type="number" value="55000"></label></div><label>Team names — one per line<textarea name="teams" rows="5" placeholder="Brian\nMike\nJohn" required></textarea></label><select name="provider"><option value="sleeper">Real NFL data</option><option value="mock">Demo data</option></select><button>Create Capped League</button></form><hr><h2>Join a league</h2><form id="join"><input name="id" placeholder="League ID" required><input name="code" placeholder="Your team access code" required><button>Join League</button></form></section>`;document.getElementById("create").onsubmit=create;document.getElementById("join").onsubmit=join}
 async function create(e){e.preventDefault();try{const f=new FormData(e.target);const d=await api("/api/leagues",{method:"POST",body:{name:f.get("name"),season:+f.get("season"),startWeek:+f.get("startWeek"),numWeeks:+f.get("numWeeks"),budget:+f.get("budget"),provider:f.get("provider"),teams:String(f.get("teams")).split("\n").map(x=>x.trim()).filter(Boolean)}});S.id=d.league.id;S.code=d.codes[0].code;S.week=1;save();showCodes(d.codes)}catch(x){home(x.message)}}
@@ -31,86 +31,28 @@ function shell(content){app.innerHTML=leagueHeader()+nav()+content;bindNav();bin
 function statusIcon(state){return '<span class="status-icon '+state+'" aria-label="'+(state==='complete'?'Complete':state==='progress'?'In progress':'Not ready')+'"></span>'}
 function statusCard(m){const poolReady=groupPoolReady(),selected=countLineup(S.lineup),submitted=selected===8,status=S.view.week.status;const poolState=poolReady?'complete':'not-ready',lineupState=submitted?'complete':selected>0?'progress':'not-ready',weekState=['locked','final'].includes(status)?'complete':status==='open'?'progress':'not-ready';return '<div class="grid"><div class="group-card status-section '+poolState+'"><div class="eyebrow">PLAYER POOL</div><div class="status-title">'+statusIcon(poolState)+'<h3>'+(poolReady?'READY':'NOT READY')+'</h3></div><p class="muted">'+(poolReady?'Your unique group pool is available.':S.view.week.status==='open'?'Waiting for the commissioner to generate your group pool.':'Waiting for the commissioner to open the week.')+'</p></div><div class="group-card status-section '+lineupState+'"><div class="eyebrow">LINEUP</div><div class="status-title">'+statusIcon(lineupState)+'<h3>'+(submitted?'SUBMITTED':selected>0?selected+'/8 SELECTED':'NOT SUBMITTED')+'</h3></div><p class="muted">'+(submitted?'Complete lineup — you can update before lock.':selected>0?'Keep going — select '+(8-selected)+' more players.':'Build and submit your 8-player lineup.')+'</p></div><div class="group-card status-section '+weekState+'"><div class="eyebrow">WEEK STATUS</div><div class="status-title">'+statusIcon(weekState)+'<h3>'+esc(status.toUpperCase())+'</h3></div><p class="muted">'+(S.view.week.lockAt?'Locks '+new Date(S.view.week.lockAt).toLocaleString():'Lock time set when week opens.')+'</p></div></div>'}
 function dashboardView(){const l=S.league,w=S.view,m=w.matchup,my=S.me?.team?.id,rec=(l.standings||[]).find(x=>x.id===my),rows=(l.weeks.find(x=>x.week===S.week)?.matchups||[]);return '<section class="card"><div class="hero-brand"><div><div class="eyebrow">WEEK '+S.week+'</div><h2>Build under the cap. Beat your opponent.</h2><p class="muted">You are in '+esc(effectiveGroupName())+'. Your group shares a unique player pool that other groups do not receive.</p></div></div>'+statusCard(m)+'<div class="grid"><div class="group-card"><h3>My Record</h3><strong>'+(rec?(rec.w+"-"+rec.l+"-"+rec.t):"0-0-0")+'</strong><p class="muted">League standing</p></div><div class="group-card"><h3>Group</h3><strong>'+esc(effectiveGroupName())+'</strong><p class="muted">'+rows.filter(x=>x.groupId===S.me.groupId).length+' matchup(s) this week</p></div><div class="group-card"><h3>Notifications</h3><strong>Automatic</strong><p class="muted">Pool-ready alerts are checked automatically.</p><small class="muted">Build 20261004-impact-1</small><button class="secondary" id="enableAlerts">Enable browser alerts</button></div></div></section>'+(m?lineup(m,l):'<section class="card"><h2>Bye week</h2><p>You do not have a matchup this week.</p></section>')}
-function teamView(){const m=S.view.matchup,l=S.league;if(!m)return '<section class="card"><h2>My Team</h2><p>You have a bye this week.</p></section>';return lineup(m,l)}
-function liveForTeam(id,matchupId=S.view.matchup?.id){const mm=S.live?.matchups?.find(x=>x.id===matchupId);return mm?.teams?.find(x=>x.id===id)||null}
+function teamView(){const m=S.view.matchup,l=S.league;if(!m)return '<section class="card"><h2>My Team</h2><p>You are not assigned to a group this week.</p></section>';return lineup(m,l)}
+function liveForTeam(id,matchupId=S.view.matchup?.id){const mm=S.live?.matchups?.find(x=>x.id===matchupId);return mm?.teams?.find(x=>x.id===id)||null}(id,matchupId=S.view.matchup?.id){const mm=S.live?.matchups?.find(x=>x.id===matchupId);return mm?.teams?.find(x=>x.id===id)||null}
 function matchupsView(){
- const rows=S.league.weeks.find(w=>w.week===S.week)?.matchups||[],mine=S.me?.team?.id,liveRows=S.live?.matchups||[],schedule=S.live?.schedule||[];
- const poolFor=m=>m.pool||S.matchups?.matchups?.find(x=>x.id===m.id)?.pool||[];
+ const comps=S.matchups?.matchups||[],liveRows=S.live?.matchups||[],mine=S.me?.team?.id;
  const teamLive=(m,id)=>liveRows.find(x=>x.id===m.id)?.teams?.find(x=>x.id===id);
- const gameFor=player=>{
-  if(!player?.team)return null;
-  return schedule.find(g=>g.home===player.team||g.away===player.team)||null;
- };
- const gameState=game=>{
-  if(!game)return {label:"STATUS UNKNOWN",key:"unknown"};
-  const status=String(game.status||"").toLowerCase().replace(/[_-]/g," ");
-  if(/postponed|cancelled|canceled/.test(status))return {label:"NOT PLAYING",key:"final"};
-  if(/final|complete|ended/.test(status))return {label:"FINAL",key:"final"};
-  if(/halftime|half time|half/.test(status))return {label:"HALFTIME",key:"halftime"};
-  const kickoff=Date.parse(game.date);
-  if(Number.isFinite(kickoff)&&Date.now()<kickoff)return {label:"UPCOMING",key:"upcoming"};
-  if(/progress|live|active|playing|in progress/.test(status))return {label:"LIVE",key:"live"};
-  if(Number.isFinite(kickoff)&&Date.now()>=kickoff)return {label:"LIVE",key:"live"};
-  return {label:"STATUS UNKNOWN",key:"unknown"};
- };
- const playerBreakdown=(m,t)=>{
-  if(!t?.lineup)return "";
-  const pool=poolFor(m),ids=[...(t.lineup.QB||[]),...(t.lineup.FLEX||[])];
-  return ids.map(id=>{
-   const p=pool.find(x=>x.id===id);if(!p)return "";
-   const raw=Number(t.playerPoints?.[id]||0),ace=t.lineup.multipliers?.ace===id,impact=t.lineup.multipliers?.impact===id,mult=ace?2:impact?1.5:1,pts=raw*mult;
-   const gs=gameState(gameFor(p)),badge=ace?" ⭐ ACE 2×":impact?" 🔥 IMPACT 1.5×":"";
-   const opp=p.team===gameFor(p)?.home?gameFor(p)?.away:gameFor(p)?.home;
-   const venue=opp?(p.team===gameFor(p).home?"vs ":"@ ")+opp:"";
-   return '<div class="live-player-row"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team||'')+(venue?' · '+esc(venue):'')+badge+'</small></span><strong>'+pts.toFixed(1)+' <em class="game-status '+gs.key+'">'+gs.label+'</em></strong></div>';
-  }).join("");
- };
- const remaining=(m,t)=>{
-  if(!t?.lineup)return null;
-  const pool=poolFor(m),ids=[...(t.lineup.QB||[]),...(t.lineup.FLEX||[])];
-  return ids.reduce((n,id)=>{const p=pool.find(x=>x.id===id),gs=gameState(gameFor(p));return n+(gs.key!=="final"?1:0)},0);
- };
- let out='<section class="card live-scoreboard"><div class="bar"><div><h2>Live Matchups</h2><p class="muted">Live fantasy scoring across every group.</p></div><span class="pill live-pill">● LIVE</span></div>';
+ const poolFor=m=>m.pool||S.matchups?.matchups?.find(x=>x.id===m.id)?.pool||[];
+ const gameFor=player=>player?.team?(S.live?.schedule||[]).find(g=>g.home===player.team||g.away===player.team):null;
+ const gameState=g=>{if(!g)return{label:"STATUS UNKNOWN",key:"unknown"};const s=String(g.status||"").toLowerCase().replace(/[_-]/g," ");if(/postponed|cancelled|canceled/.test(s))return{label:"NOT PLAYING",key:"final"};if(/final|complete|ended/.test(s))return{label:"FINAL",key:"final"};if(/halftime|half time|half/.test(s))return{label:"HALFTIME",key:"halftime"};const k=Date.parse(g.date);if(Number.isFinite(k)&&Date.now()<k)return{label:"UPCOMING",key:"upcoming"};return{label:"LIVE",key:"live"}};
+ const playerBreakdown=(m,t)=>{if(!t?.lineup)return"";const pool=poolFor(m),ids=[...(t.lineup.QB||[]),...(t.lineup.FLEX||[])];return ids.map(id=>{const p=pool.find(x=>x.id===id);if(!p)return"";const g=gameFor(p),gs=gameState(g),raw=Number(t.playerPoints?.[id]||0),ace=t.lineup.multipliers?.ace===id,impact=t.lineup.multipliers?.impact===id,pts=raw*(ace?2:impact?1.5:1),opp=g?(p.team===g.home?g.away:g.home):"";return '<div class="live-player-row"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team||'')+(opp?' · '+(p.team===g.home?'vs ':'@ ')+esc(opp):'')+(ace?' ⭐ ACE 2×':impact?' 🔥 IMPACT 1.5×':'')+'</small></span><strong>'+pts.toFixed(1)+' <em class="game-status '+gs.key+'">'+gs.label+'</em></strong></div>'}).join("")};
+ let out='<section class="card live-scoreboard"><div class="bar"><div><h2>Group Competition</h2><p class="muted">Every team competes within its group.</p></div><span class="pill live-pill">● LIVE</span></div>';
  let lastGroup=null;
- rows.forEach(m=>{
-  const g=(S.league.groups||[]).find(x=>x.id===m.groupId),a=S.league.teams.find(x=>x.id===m.a),b=m.b&&S.league.teams.find(x=>x.id===m.b),la=teamLive(m,m.a),lb=m.b&&teamLive(m,m.b);
-  if(g?.id!==lastGroup){out+='<div class="eyebrow group-label">'+esc(g?.name||"GROUP")+'</div>';lastGroup=g?.id}
-  const sa=la?.score??null,sb=lb?.score??null,lead=sa!=null&&sb!=null?(sa>sb?"a":sb>sa?"b":"tie"):null,my=m.a===mine||m.b===mine,ra=remaining(m,la),rb=remaining(m,lb);
-  const scoreEl=(team,score,key)=>'<div class="team-score '+(lead===key?"leading":"")+'"><b>'+esc(team?.name||"BYE")+'</b><strong class="score-number" data-score="'+(score??"")+'" data-team-key="'+m.id+"-"+(team?.id||"")+'">'+(score!=null?Number(score).toFixed(1):"—")+'</strong><small>'+(score!=null?(key==="a"?ra:rb)+" player"+((key==="a"?ra:rb)===1?"":"s")+" remaining":"")+'</small></div>';
-  out+='<div class="live-match '+(my?"my-match":"")+'"><div class="match-head"><span class="muted">'+(my?"YOUR MATCHUP":"MATCHUP")+'</span><span class="muted">LIVE</span></div><div class="score-row">'+scoreEl(a,sa,"a")+'<div class="vs">VS</div>'+scoreEl(b,sb,"b")+'</div><div class="score-status">'+(lead==="tie"?"TIED":lead==="a"?esc(a?.name)+" WINNING":lead==="b"?esc(b?.name)+" WINNING":"LIVE")+'</div>';
-  if(la?.lineup||lb?.lineup)out+='<details class="live-details" open><summary>Player scoring</summary><div class="live-player-columns">'+(la?.lineup?'<div><b>'+esc(a?.name||"Team")+'</b>'+playerBreakdown(m,la)+'</div>':"")+(lb?.lineup?'<div><b>'+esc(b?.name||"Team")+'</b>'+playerBreakdown(m,lb)+'</div>':"")+'</div></details>';
-  out+='</div>';
- });
- out+='<p class="muted live-updated" aria-live="polite">Scores refresh every 15 seconds. Player status and remaining players update automatically.</p></section>';
- return out;
+ comps.forEach(m=>{const g=(S.league.groups||[]).find(x=>x.id===m.groupId),lr=liveRows.find(x=>x.id===m.id),teams=(m.teamIds||[]).map(id=>teamLive(m,id)||{id,name:S.league.teams.find(t=>t.id===id)?.name||"Team"});if(g?.id!==lastGroup){out+='<div class="eyebrow group-label">'+esc(g?.name||"GROUP")+'</div>';lastGroup=g?.id}const ranked=teams.map(t=>({t,score:t.score})).sort((a,b)=>(b.score??-1)-(a.score??-1));out+='<div class="live-match"><div class="match-head"><span class="muted">'+esc(g?.name||"GROUP")+'</span><span class="muted">'+(m.result?'FINAL':'LIVE')+'</span></div><div class="group-scoreboard">'+ranked.map((r,i)=>'<div class="group-score-row '+(r.t.id===mine?"my-match":"")+'"><span><b>'+ (i+1)+'. '+esc(r.t.name)+'</b>'+(r.t.id===mine?' <small>YOU</small>':'')+'</span><strong>'+ (r.score!=null?Number(r.score).toFixed(1):"—")+'</strong><span class="placement-points">'+(m.result?.placementPoints?.[r.t.id]||"—")+' pts</span></div>').join("")+'</div>';
+ const mineTeam=teams.find(x=>x.id===mine);if(mineTeam?.lineup)out+='<details class="live-details" open><summary>My player scoring</summary>'+playerBreakdown(m,mineTeam)+'</details>';out+='</div>'});
+ out+='<p class="muted live-updated">Scores refresh every 15 seconds. Rankings and placement points update automatically.</p></section>';return out;
 }
 function liveView(){return matchupsView().replace("<h2>Live Matchups</h2>","<h2>Live Scoreboard</h2>")}
 function standingsView(){
-  const week=S.league.weeks.find(w=>w.week===S.week)||{};
-  const teams=S.league.teams||[];
-  const weekly=new Map(teams.map(t=>[t.id,{teamId:t.id,name:t.name,pts:0,pf:0}]));
-  for(const m of week.matchups||[]){
-    if(m.b===null) continue;
-    const a=weekly.get(m.a), b=weekly.get(m.b);
-    const live=S.live?.matchups?.find(x=>x.id===m.id);
-    const la=live?.teams?.find(x=>x.id===m.a), lb=live?.teams?.find(x=>x.id===m.b);
-    const pa=m.result?.points?.[m.a]??la?.score, pb=m.result?.points?.[m.b]??lb?.score;
-    if(pa==null||pb==null) continue;
-    a.pf=Number(pa); b.pf=Number(pb);
-    if(pa===pb){a.pts+=1;b.pts+=1;}else if(pa>pb){a.pts+=3;}else{b.pts+=3;}
-  }
-  const sortRows=rows=>rows.sort((a,b)=>b.pts-a.pts||b.pf-a.pf);
-  const table=rows=>'<table class="standings"><tr><th>#</th><th>Team</th><th>PF</th><th>Pts</th></tr>'+rows.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td><td>'+r.pts+'</td></tr>').join("")+'</table>';
-  let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Win = 3 pts · Tie = 1 pt · Loss = 0 pts.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
-  out+='<div class="group-card"><h3>Group Standings — Week '+S.week+'</h3><p class="muted">Teams compete only within their group.</p>';
-  for(const g of S.league.groups||[]){
-    const rows=sortRows(g.teamIds.map(id=>weekly.get(id)));
-    out+='<div style="margin-top:14px"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+g.teamIds.length+' teams</span></div>'+table(rows)+'</div>';
-  }
-  out+='</div><div class="group-card"><h3>League Standings</h3><p class="muted">Season standings are ranked by total standings points. Ties within the same group use head-to-head first, then total season points.</p>';
-  const overall=sortRows((S.league.standings||[]).map(r=>({teamId:r.teamId,name:r.name,pts:Number(r.standingsPoints??r.pts??0),pf:Number(r.pf||0)})));
-  out+=table(overall)+'</div></section>';
-  return out;
+ const teams=S.league.teams||[], comps=S.matchups?.matchups||[], live=S.live?.matchups||[];
+ let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Weekly placement points: 1st gets the highest points in the group, then descending to 1 point.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
+ const groupTable=g=>{const rows=(g.teamIds||[]).map(id=>{const tm=teams.find(t=>t.id===id),r=(S.league.standings||[]).find(x=>x.teamId===id),lv=live.flatMap(m=>m.teams||[]).find(t=>t.id===id);return{name:tm?.name||"Team",score:lv?.score??null,season:r?.standingsPoints??r?.pts??0,pf:r?.pf??0,id}});return '<div class="group-card"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+rows.length+' teams</span></div><table class="standings"><tr><th>#</th><th>Team</th><th>Week '+S.week+'</th><th>Pts</th><th>Season</th></tr>'+rows.sort((a,b)=>(b.score??-1)-(a.score??-1)).map((r,i)=>'<tr><td>'+ (i+1)+'</td><td>'+esc(r.name)+'</td><td>'+ (r.score==null?'—':Number(r.score).toFixed(1))+'</td><td>'+Math.max(rows.length-i,1)+'</td><td>'+r.season+'</td></tr>').join("")+'</table></div>'};
+ for(const g of S.league.groups||[])out+=groupTable(g);
+ out+='<div class="group-card"><h3>League Standings</h3><p class="muted">Season standings are based on accumulated weekly placement points. Total fantasy points break ties.</p><table class="standings"><tr><th>#</th><th>Team</th><th>Pts</th><th>Total PF</th></tr>'+[...(S.league.standings||[])].map((r,i)=>'<tr><td>'+ (i+1)+'</td><td>'+esc(r.name)+'</td><td>'+ (r.standingsPoints??r.pts??0)+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td></tr>').join("")+'</table></div></section>';return out;
 }
 function injuryLabel(p){const s=String(p.injuryStatus||"healthy").toLowerCase();if(s==="healthy")return '<span class="good">Healthy</span>';if(s==="questionable")return '<span class="err">Q — Questionable</span>';return '<span class="err">'+esc(s.replaceAll("_"," "))+'</span>'}
 function playersView(){const pool=groupPool();if(!pool.length)return '<section class="card"><h2>Your Group Player Pool</h2><p class="muted">Your unique group player pool has not loaded yet.</p><p class="err">If the commissioner has generated the pool, refresh the league and try again.</p></section>';return '<section class="card"><h2>Your Group Player Pool</h2><p class="muted">Every team in your group receives this same unique pool. Out/IR/inactive players are excluded; questionable players are clearly marked.</p><div class="grid">'+pool.map(p=>'<div class="player"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team)+' · '+(p.opponent?esc(p.homeAway||'vs')+' '+esc(p.opponent)+' · ':'')+p.proj+' proj · '+injuryLabel(p)+'</small></span><b>'+money(p.salary)+'</b></div>').join("")+'</div></section>'}
