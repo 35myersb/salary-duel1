@@ -19,7 +19,7 @@ const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function randomString(len) { return [...crypto.randomBytes(len)].map((b) => CODE_CHARS[b % CODE_CHARS.length]).join(''); }
 export const makeCode = () => randomString(8);
 export const makeLeagueId = () => randomString(6).toLowerCase();
-export const emptyLineup = () => ({ QB: [], FLEX: [], multipliers: { ace: null, champion: null } });
+export const emptyLineup = () => ({ QB: [], FLEX: [], multipliers: { ace: null, impact: null } });
 function wholeNumber(value, min, max, label) {
   const n = Number(value);
   if (!Number.isInteger(n) || n < min || n > max) throw new ApiError(400, `${label} must be a whole number from ${min} to ${max}`);
@@ -218,14 +218,14 @@ export function validateLineup(raw, pool, budget) {
     }
   }
   const rawMultipliers = input.multipliers && typeof input.multipliers === "object" ? input.multipliers : {};
-  const ace = rawMultipliers.ace || null, champion = rawMultipliers.champion || null;
+  const ace = rawMultipliers.ace || null, impact = rawMultipliers.impact || rawMultipliers.champion || null;
   const ids = new Set(lineupIds(lineup));
   if (ace && !ids.has(ace)) errors.push("ACE must be one of your lineup players");
-  if (champion && !ids.has(champion)) errors.push("CHAMPION must be one of your lineup players");
-  if (ace && champion && ace === champion) errors.push("ACE and CHAMPION must be different players");
+  if (impact && !ids.has(impact)) errors.push("IMPACT must be one of your lineup players");
+  if (ace && impact && ace === impact) errors.push("ACE and IMPACT must be different players");
   if (complete && !ace) errors.push("Choose an ACE for your lineup");
-  if (complete && !champion) errors.push("Choose a CHAMPION for your lineup");
-  lineup.multipliers = { ace, champion };
+  if (complete && !impact) errors.push("Choose a IMPACT for your lineup");
+  lineup.multipliers = { ace, impact };
   if (salary > budget) errors.push(`Over budget by ${(salary - budget).toLocaleString("en-US")}`);
   return { ok: errors.length === 0, errors, lineup, salary, complete: seen.size === TOTAL_SLOTS };
 }
@@ -237,8 +237,8 @@ export function scoreWeek(league, weekNo, actuals) {
     const points = {}, adjustments = {};
     for (const teamId of [m.a, m.b]) {
       const lineup = m.lineups[teamId] || emptyLineup(), ids = SLOT_NAMES.flatMap((s) => lineup[s]), adj = w.adjustments?.[teamId] || [];
-      const ace = lineup.multipliers?.ace, champion = lineup.multipliers?.champion;
-      adjustments[teamId] = adj; points[teamId] = round2(ids.reduce((sum, id) => sum + (actuals[id] || 0) * (id === ace ? 2 : id === champion ? 1.5 : 1), 0) + adj.reduce((s, a) => s + a.points, 0));
+      const ace = lineup.multipliers?.ace, impact = lineup.multipliers?.impact;
+      adjustments[teamId] = adj; points[teamId] = round2(ids.reduce((sum, id) => sum + (actuals[id] || 0) * (id === ace ? 2 : id === impact ? 1.5 : 1), 0) + adj.reduce((s, a) => s + a.points, 0));
     }
     const playerPoints = {}; for (const p of m.pool) playerPoints[p.id] = actuals[p.id] || 0;
     const winner = points[m.a] === points[m.b] ? 'tie' : points[m.a] > points[m.b] ? m.a : m.b;
