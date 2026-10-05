@@ -217,6 +217,7 @@ export function validateLineup(raw, pool, budget) {
   if (ace && !ids.has(ace)) errors.push("ACE must be one of your lineup players");
   if (impact && !ids.has(impact)) errors.push("IMPACT must be one of your lineup players");
   if (ace && impact && ace === impact) errors.push("ACE and IMPACT must be different players");
+  const complete = seen.size === TOTAL_SLOTS;
   if (complete && !ace) errors.push("Choose an ACE for your lineup");
   if (complete && !impact) errors.push("Choose a IMPACT for your lineup");
   lineup.multipliers = { ace, impact };
