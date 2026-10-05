@@ -8,7 +8,7 @@ const body=async req=>{const chunks=[];for await(const c of req)chunks.push(c);r
 const code=req=>String(req.headers["x-team-code"]||"").trim().toUpperCase();
 const team=(l,c)=>{const t=l.teams.find(x=>x.code===c);if(!t)throw new ApiError(401,"Invalid team access code");return t};
 const pub=l=>({id:l.id,name:l.name,season:l.season,startWeek:l.startWeek,numWeeks:l.numWeeks,budget:l.budget,provider:l.provider,slots:L.SLOTS,groups:L.getGroups(l).map(g=>({id:g.id,name:g.name,teamIds:g.teamIds,standings:L.groupStandings(l,g.id)})),teams:l.teams.map(t=>({id:t.id,name:t.name,isCommish:t.isCommish,groupId:L.getGroups(l).find(g=>g.teamIds.includes(t.id))?.id||null})),weeks:l.weeks.map(w=>({week:w.week,nflWeek:w.nflWeek,status:w.status,lockAt:w.lockAt,poolReadyAt:w.poolReadyAt||null,competitions:w.matchups.map(m=>({id:m.id,groupId:m.groupId,teamIds:m.teamIds,result:m.result||null}))})),standings:L.standings(l)});
-async function getLeague(id,c){const l=await store.getLeague(id,c);if(!l)throw new ApiError(404,"League not found");return l}
+async function getLeague(id,c){const l=await store.getLeague(id,c);if(!l)throw new ApiError(404,"League not found");const changed=!!L.migrateLeague(l);if(changed){}return l}
 export default async function(req,res){
  try{
   const u=new URL(req.url,"http://localhost"),p=u.pathname.split("/").filter(Boolean);
