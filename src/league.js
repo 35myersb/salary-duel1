@@ -44,6 +44,12 @@ export function createLeague(input) {
   return{id:makeLeagueId(),name,season,startWeek,numWeeks,budget,provider,groups,createdAt:new Date().toISOString(),teams,weeks};
 }
 export function migrateLeague(league) {
+  // Keep legacy league state compatible with the NOT NULL standoff column.
+  if (!league.standoff || typeof league.standoff !== 'object') {
+    league.standoff = { ...STANDOFF_DEFAULTS };
+  } else {
+    league.standoff = { ...STANDOFF_DEFAULTS, ...league.standoff };
+  }
   for (const w of league.weeks || []) {
     if (!Array.isArray(w.matchups) || !w.matchups.some(m => m.a !== undefined || m.b !== undefined)) continue;
     const byGroup = new Map();
