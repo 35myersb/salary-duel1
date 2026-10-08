@@ -87,6 +87,8 @@ export default {
   })).filter(p=>POS.includes(p.position)&&p.team);
 
   markLikelyStarters(metaPlayers);
+  let consensus=null;
+  try { consensus=await getConsensusProjections(s,w); } catch { consensus=null; }
   let projected=[];
   try {
     const r=await getJSON(BASE+"/projections/nfl/regular/"+s+"/"+w+"?season_type=regular");
