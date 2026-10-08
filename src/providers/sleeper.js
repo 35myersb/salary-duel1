@@ -68,7 +68,11 @@ async function addOpponents(players, season, week){
       if(g.home)byTeam.set(g.home,{opponent:g.away,homeAway:"vs"});
       if(g.away)byTeam.set(g.away,{opponent:g.home,homeAway:"@"});
     }
-    return players.map(p=>({...p,...(byTeam.get(p.team)||{})}));
+    return players.map(p=>({
+      ...p,
+      ...(byTeam.get(p.team)||{}),
+      onBye: !byTeam.has(p.team)
+    }));
   } catch { return players; }
 }
 
@@ -106,7 +110,7 @@ export default {
         proj:consensusProj??baseProj,baseProj,consensusProj,
         injuryStatus:meta.injuryStatus||null,likelyStarter:meta.likelyStarter!==false,
         depthChartOrder:meta.depthChartOrder};
-    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2),s,w);
+    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2&&!p.onBye),s,w);
   }
 
   const historical=await historicalProjections(s,w,metaPlayers);
@@ -120,7 +124,7 @@ export default {
     id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,
     injuryStatus:p.injuryStatus||null,likelyStarter:p.likelyStarter!==false,depthChartOrder:p.depthChartOrder
   }));
-  return addOpponents(out,s,w);
+  return (await addOpponents(out,s,w)).filter(p=>!p.onBye);
  },
  async getLockAt(s,w){
   try {
