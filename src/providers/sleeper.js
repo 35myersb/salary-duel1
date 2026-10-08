@@ -108,6 +108,12 @@ export default {
   }
 
   const historical=await historicalProjections(s,w,metaPlayers);
+  if (consensus) {
+    for (const p of historical) {
+      const cp=consensusForPlayer(consensus,{name:p.full_name,pos:p.position});
+      if (cp!=null) p.proj=cp;
+    }
+  }
   const out=historical.filter(p=>p.proj>=2).map(p=>({
     id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,
     injuryStatus:p.injuryStatus||null,likelyStarter:p.likelyStarter!==false,depthChartOrder:p.depthChartOrder
