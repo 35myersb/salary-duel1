@@ -1,5 +1,6 @@
 import {cached} from "./cache.js";
 import {scoreHalfPPR} from "../scoring.js";
+import {getConsensusProjections,consensusForPlayer} from "../consensus.js";
 const BASE="https://api.sleeper.app/v1";
 const POS=["QB","RB","WR","TE"];
 async function getJSON(url){const r=await fetch(url,{signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error("Sleeper responded "+r.status);return r.json()}
@@ -96,7 +97,11 @@ export default {
     const byId=new Map(metaPlayers.map(p=>[p.player_id,p]));
     return addOpponents(projected.map(i=>{
       const meta=byId.get(i.player_id)||{}, stats=i.stats||i;
-      return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,proj:fantasy(stats),
+      const baseProj=fantasy(stats);
+      const temp={name:meta.full_name||i.player_id,pos:meta.position};
+      const consensusProj=consensus?consensusForPlayer(consensus,temp):null;
+      return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,
+        proj:consensusProj??baseProj,baseProj,consensusProj,
         injuryStatus:meta.injuryStatus||null,likelyStarter:meta.likelyStarter!==false,
         depthChartOrder:meta.depthChartOrder};
     }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2),s,w);
