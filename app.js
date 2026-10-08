@@ -13,7 +13,7 @@ const multiplierIds=l=>[l?.multipliers?.ace,l?.multipliers?.impact].filter(Boole
 const save=()=>{localStorage.sd_id=S.id;localStorage.sd_code=S.code;localStorage.sd_week=S.week};
 const countLineup=l=>slotIds(l).length;
 const money=n=>"$"+Number(n||0).toLocaleString("en-US");
-async function api(path,opt={}){const headers={"Content-Type":"application/json"};if(S.code)headers["x-team-code"]=S.code;const r=await fetch(path,{...opt,headers,cache:"no-store",body:opt.body?JSON.stringify(opt.body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function api(path,opt={}){const headers={"Content-Type":"application/json"};if(S.code)headers["x-team-code"]=S.code;const r=await fetch(path,{...opt,headers,cache:"no-store",body:opt.body?JSON.stringify(opt.body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error((d.error||"Request failed")+" ["+r.status+" "+path+"]");return d}
 function requestBrowserAlerts(){if(!("Notification"in window)){alert("Browser notifications are not supported here.");return}Notification.requestPermission().then(p=>{if(p==="granted")alert("CAPPED alerts are enabled on this device.")})}
 function derivedGroup(){const teamId=S.me?.team?.id;return (S.league?.groups||[]).find(g=>g.teamIds?.includes(teamId))||null}
 function effectiveGroupId(){return S.me?.team?.groupId||S.me?.groupId||S.view?.matchup?.groupId||derivedGroup()?.id||null}
