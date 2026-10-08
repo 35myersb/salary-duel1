@@ -45,8 +45,6 @@ function parseTables(html){
       name=name.replace(/\s+([A-Z]{2,3})\s*$/,"").trim();
       const rb=raw.match(/^(.+?)\s+(?:QB|RB|WR|TE)\s*[·-]\s*([A-Z]{2,3})$/);
       if(rb)name=rb[1].trim();
-      // 4for4's page is explicitly 6-point passing-TD scoring. Capped uses 4 points,
-      // so convert QB projections before averaging.
       const passTd=tdIdx>=0?numberAt(r[tdIdx]):null;
       const proj=passTd!=null&&h.some(x=>x.includes("patd")||x.includes("passing td")) ? rawProj-(2*passTd) : rawProj;
       if(name&&name.toLowerCase()!=="player"&&Number.isFinite(proj)&&proj>=0)out.push({name,team:tm,proj});
@@ -59,7 +57,7 @@ async function fetchSource(source,pos,season,week){
     const r=await fetch(source.url(pos,season,week),{signal:AbortSignal.timeout(12000),headers:{"user-agent":"Capped/1.0"}});
     if(!r.ok)return [];
     return parseTables(await r.text());
-  }catch{return [];
+  }catch{return [];}
 }
 export async function getConsensusProjections(season,week){
   const result=new Map();
