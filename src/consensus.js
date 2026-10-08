@@ -1,4 +1,4 @@
-import {cached} from "./cache.js";
+import {cached} from "./providers/cache.js";
 
 const SOURCES = [
   {name:"FantasyPros", url:(pos,season,week)=>`https://www.fantasypros.com/nfl/projections/${pos.toLowerCase()}.php?week=${week}&scoring=HALF`},
@@ -59,7 +59,7 @@ async function fetchSource(source,pos,season,week){
     const r=await fetch(source.url(pos,season,week),{signal:AbortSignal.timeout(12000),headers:{"user-agent":"Capped/1.0"}});
     if(!r.ok)return [];
     return parseTables(await r.text());
-  }catch{return [];}
+  }catch{return [];
 }
 export async function getConsensusProjections(season,week){
   const result=new Map();
