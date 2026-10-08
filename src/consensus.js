@@ -2,7 +2,7 @@ import {cached} from "./cache.js";
 
 const SOURCES = [
   {name:"FantasyPros", url:(pos,season,week)=>`https://www.fantasypros.com/nfl/projections/${pos.toLowerCase()}.php?week=${week}&scoring=HALF`},
-  {name:"RotoBaller", url:()=>`https://www.rotoballer.com/fantasy-football-projections-for-week-5-rb-wr-qb-te-2026/1960389`}
+  {name:"4for4", url:(pos,season,week)=>`https://www.4for4.com/fantasy-football-projections/half-ppr-6pt-patd/${pos.toLowerCase()}/${season}/week${week}`}
 ];
 
 const POS=["QB","RB","WR","TE"];
@@ -18,9 +18,7 @@ function text(s){
     .replace(/<style[\s\S]*?<\/style>/gi,"")
     .replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim());
 }
-function norm(s){
-  return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
-}
+function norm(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
 function parseCells(row){
   return [...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m=>text(m[1]));
 }
@@ -35,21 +33,23 @@ function parseTables(html){
     const h=rows[i].map(x=>x.toLowerCase());
     const playerIdx=h.findIndex(x=>x.includes("player"));
     const projIdx=h.findIndex(x=>/fpts|ff pts|fan points|proj(?:ected)?(?: pts| points)?$/.test(x.replace(/[^a-z ]/g,"").trim()));
-    const posIdx=h.findIndex(x=>x==="pos"||x.includes("position"));
-    const teamIdx=h.findIndex(x=>x==="team");
     if(playerIdx<0||projIdx<0)continue;
+    const tdIdx=h.findIndex(x=>x==="patd"||x.includes("passing td"));
     for(let j=i+1;j<rows.length;j++){
       const r=rows[j]; if(r.length<=Math.max(playerIdx,projIdx)) break;
-      const playerCell=r[playerIdx], proj=numberAt(r[projIdx]);
-      if(!playerCell||!Number.isFinite(proj)||proj<0||proj>60)continue;
+      const playerCell=r[playerIdx], rawProj=numberAt(r[projIdx]);
+      if(!playerCell||!Number.isFinite(rawProj)||rawProj<0||rawProj>60)continue;
       const raw=playerCell.replace(/\s+/g," ").trim();
-      const tm=teamIdx>=0?(r[teamIdx]||"").trim():(r.find(x=>/^[A-Z]{2,3}$/.test(x.trim()))||"").trim();
-      const rowPos=posIdx>=0?String(r[posIdx]||"").trim().toUpperCase():"";
+      const tm=(r.find(x=>/^[A-Z]{2,3}$/.test(x.trim()))||"").trim();
       let name=raw.replace(/\s+\(([A-Z]{2,3})\)\s*$/,"").trim();
       name=name.replace(/\s+([A-Z]{2,3})\s*$/,"").trim();
       const rb=raw.match(/^(.+?)\s+(?:QB|RB|WR|TE)\s*[·-]\s*([A-Z]{2,3})$/);
-      if(rb){name=rb[1].trim();}
-      if(name && name.toLowerCase()!=="player") out.push({name,team:tm,pos:rowPos,proj});
+      if(rb)name=rb[1].trim();
+      // 4for4's page is explicitly 6-point passing-TD scoring. Capped uses 4 points,
+      // so convert QB projections before averaging.
+      const passTd=tdIdx>=0?numberAt(r[tdIdx]):null;
+      const proj=passTd!=null&&h.some(x=>x.includes("patd")||x.includes("passing td")) ? rawProj-(2*passTd) : rawProj;
+      if(name&&name.toLowerCase()!=="player"&&Number.isFinite(proj)&&proj>=0)out.push({name,team:tm,proj});
     }
   }
   return out;
@@ -58,8 +58,7 @@ async function fetchSource(source,pos,season,week){
   try{
     const r=await fetch(source.url(pos,season,week),{signal:AbortSignal.timeout(12000),headers:{"user-agent":"Capped/1.0"}});
     if(!r.ok)return [];
-    const rows=parseTables(await r.text());
-    return rows.filter(row=>!row.pos||row.pos===pos);
+    return parseTables(await r.text());
   }catch{return [];}
 }
 export async function getConsensusProjections(season,week){
@@ -86,6 +85,5 @@ export async function getConsensusProjections(season,week){
   return result;
 }
 export function consensusForPlayer(map,p){
-  const exact=map.get(String(p.pos).toUpperCase()+"|"+norm(p.name));
-  return exact?.projection ?? null;
+  return map.get(String(p.pos).toUpperCase()+"|"+norm(p.name))?.projection??null;
 }
