@@ -37,7 +37,7 @@ async function load(attempt=0){try{if(attempt===0)app.innerHTML='<section class=
     return;
   }
   home(x.message+(S.id&&S.code?" — your saved league session was kept.":""));
-}
+}}
 async function refreshLive(shouldRender=true){try{if(!S.id||!S.code||!S.view||["pending","final"].includes(S.view.week.status))return;const previous=S.live;S.live=await api("/api/leagues/"+S.id+"/weeks/"+S.week+"/live");if(shouldRender){render();requestAnimationFrame(()=>{const oldMap={};(previous?.matchups||[]).forEach(m=>(m.teams||[]).forEach(t=>oldMap[m.id+"-"+t.id]=Number(t.score)));document.querySelectorAll(".score-number").forEach(el=>{const n=Number(el.dataset.score),o=oldMap[el.dataset.teamKey];if(!Number.isFinite(n)||!Number.isFinite(o)||n===o)return;el.classList.add(n>o?"score-up":"score-down");setTimeout(()=>el.classList.remove("score-up","score-down"),900)})})}}catch{}}
 function startLivePolling(){if(liveTimer)clearInterval(liveTimer);if(S.view&&!["pending","final"].includes(S.view.week.status)){refreshLive(false);liveTimer=setInterval(()=>refreshLive(S.viewName!=="team"),15000)}}
 function nav(){return '<nav class="tabs">'+[["dashboard","Home"],["team","My Team"],["live","Live"],["matchups","Matchups"],["standings","Standings"],["players","Players"],["rules","Rules"],["commissioner","Commissioner"]].map(([v,label])=>'<button class="'+(S.viewName===v?"active":"")+'" data-nav="'+v+'">'+label+'</button>').join("")+'</nav>'}
