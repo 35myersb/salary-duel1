@@ -1,13 +1,12 @@
 export const MIN_SALARY = 3000;
 export const MAX_SALARY = 10000;
 
-// Capped has 8 roster spots and a $55,000 budget. Salary is determined only
-// from projected fantasy points. The curve is calibrated so a typical
-// 15-point player costs about $6,900, putting an average 8-player lineup
-// right around the cap. It is intentionally non-linear so premium projections
-// cost meaningfully more and users cannot simply stack the highest scorers.
-// Salaries are always rounded to the nearest $100.
-const CURVE = { a: -5.1020408163, b: 545.918367347, c: -40.816326531 };
+// Salary is a mathematical function of projected Half-PPR fantasy points.
+// The curve is calibrated to the $55,000 / 8-player format: roughly
+// 15 projected points -> $6,800, 22 -> $9,200, 25 -> $10,000.
+// Premium projections become increasingly expensive, while value players
+// remain usable. Salaries are always rounded to the nearest $100.
+const CURVE = { a: -7.619047619, b: 624.761904762, c: -857.142857143 };
 
 export function salaryFromProjection(points) {
   const p = Math.max(0, Number(points) || 0);
