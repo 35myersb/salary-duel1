@@ -110,7 +110,7 @@ export default {
         proj:consensusProj??baseProj,baseProj,consensusProj,
         injuryStatus:meta.injuryStatus||null,likelyStarter:meta.likelyStarter!==false,
         depthChartOrder:meta.depthChartOrder};
-    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2&&!p.onBye),s,w);
+    }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2),s,w).then(rows=>rows.filter(p=>!p.onBye));
   }
 
   const historical=await historicalProjections(s,w,metaPlayers);
