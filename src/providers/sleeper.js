@@ -147,7 +147,16 @@ export default {
  },
  async getActuals(s,w,ids){
   const items=await getJSON(statsEndpoint(s,w));
-  const map=new Map((Array.isArray(items)?items:[]).map(i=>["sl-"+i.player_id,fantasy(i.stats||i)]));
-  return Object.fromEntries(ids.map(id=>[id,map.get(id)||0]));
+  const entries = Array.isArray(items)
+    ? items.map(item => [item?.player_id, item])
+    : Object.entries(items || {});
+  // Sleeper's stats endpoint can return a player-ID-keyed object rather than an array.
+  // Handle both response shapes so valid player stats aren't silently treated as zero.
+  const map = new Map(entries.map(([key, item]) => {
+    const playerId = item?.player_id || key;
+    if (!playerId) return null;
+    return ["sl-" + playerId, fantasy(item?.stats || item)];
+  }).filter(Boolean));
+  return Object.fromEntries(ids.map(id => [id, map.get(id) ?? 0]));
  }
 };
