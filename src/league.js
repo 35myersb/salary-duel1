@@ -199,9 +199,21 @@ export function openWeek(league, weekNo, lockAt = null) {
   w.status = "open";
 }
 
+export function randomizeWeekGroups(league,weekNo){
+ const w=getWeek(league,weekNo);
+ if(!Array.isArray(w.matchups)||!w.matchups.length)throw new ApiError(409,"This week has no groups to randomize");
+ const source=getGroups(league);
+ const shuffled=shuffle([...league.teams],seededRng(league.id+"-"+league.season+"-"+w.week+"-"+crypto.randomUUID()));
+ const groups=source.map(g=>({...g,teamIds:[]}));
+ shuffled.forEach((team,i)=>groups[i%groups.length].teamIds.push(team.id));
+ w.groups=groups;w.poolGeneration=(Number(w.poolGeneration)||0)+1;
+ w.status="open";w.lockAt=null;w.poolReadyAt=null;
+ w.matchups=groups.map(g=>({id:"w"+w.week+g.id,groupId:g.id,teamIds:[...g.teamIds],pool:null,lineups:{},result:null}));
+ return w;
+}
 export function generatePools(league,weekNo,players){
  const w=getWeek(league,weekNo);if(w.status!=='open')throw new ApiError(409,'Open the week before generating player pools');
- for(const group of getGroups(league)){const seed=league.id+'-'+league.season+'-'+w.week+'-'+group.id,pool=buildPool(players,seededRng(seed));if(cheapestCompleteLineup(pool)>league.budget)throw new ApiError(502,'The generated player pool cannot produce a complete lineup under the '+league.budget.toLocaleString()+' salary cap');const m=w.matchups.find(x=>x.groupId===group.id);if(m)m.pool=pool.map(p=>({...p}));}
+ for(const group of getGroups(league)){const seed=league.id+'-'+league.season+'-'+w.week+'-'+group.id+'-'+(w.poolGeneration||0),pool=buildPool(players,seededRng(seed));if(cheapestCompleteLineup(pool)>league.budget)throw new ApiError(502,'The generated player pool cannot produce a complete lineup under the '+league.budget.toLocaleString()+' salary cap');const m=w.matchups.find(x=>x.groupId===group.id);if(m)m.pool=pool.map(p=>({...p}));}
  w.poolReadyAt=new Date().toISOString();
 }
 export function validateLineup(raw, pool, budget) {
