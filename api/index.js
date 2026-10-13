@@ -9,20 +9,39 @@ const code=req=>String(req.headers["x-team-code"]||"").trim().toUpperCase();
 const team=(l,c)=>{const t=l.teams.find(x=>x.code===c);if(!t)throw new ApiError(401,"Invalid team access code");return t};
 const pub=l=>({id:l.id,name:l.name,season:l.season,startWeek:l.startWeek,numWeeks:l.numWeeks,budget:l.budget,provider:l.provider,slots:L.SLOTS,groups:L.getGroups(l).map(g=>({id:g.id,name:g.name,teamIds:g.teamIds,standings:L.groupStandings(l,g.id)})),teams:l.teams.map(t=>({id:t.id,name:t.name,isCommish:t.isCommish,groupId:L.getGroups(l).find(g=>g.teamIds.includes(t.id))?.id||null})),weeks:l.weeks.map(w=>({week:w.week,nflWeek:w.nflWeek,status:w.status,lockAt:w.lockAt,poolReadyAt:w.poolReadyAt||null,competitions:w.matchups.map(m=>({id:m.id,groupId:m.groupId,teamIds:m.teamIds,result:m.result||null}))})),standings:L.standings(l)});
 async function getLeague(id,c){const l=await store.getLeague(id,c);if(!l)throw new ApiError(404,"League not found");const changed=!!L.migrateLeague(l);if(changed){}return l}
+function scheduleIsComplete(schedule){
+ if(!Array.isArray(schedule)||schedule.length===0)return false;
+ return schedule.every(g=>{
+  const status=String(g.status||"").trim().toLowerCase().replace(/[ _-]+/g,"");
+  return ["final","complete","completed","ended","gameover"].includes(status)||g.completed===true;
+ });
+}
+async function finalizeCompletedWeeks(l,accessCode){
+ const provider=getProvider(l.provider);let changed=false;
+ for(const w of l.weeks||[]){
+  if(w.status!=="locked")continue;
+  const schedule=provider.getSchedule?await provider.getSchedule(l.season,w.nflWeek):[];
+  if(!scheduleIsComplete(schedule))continue;
+  const actuals=await provider.getActuals(l.season,w.nflWeek,L.poolIds(w));
+  L.scoreWeek(l,w.week,actuals);changed=true;
+ }
+ if(changed)l.__version=await store.saveLeague(l,accessCode,l.__version);
+ return changed;
+}
 export default async function(req,res){
  try{
   const u=new URL(req.url,"http://localhost"),p=u.pathname.split("/").filter(Boolean);
   if(p[0]!=="api"||p[1]!=="leagues")throw new ApiError(404,"Not found");
   if(req.method==="POST"&&p.length===2){const l=await store.createLeague(L.createLeague(await body(req)));return json(res,201,{league:pub(l),codes:l.teams.map(t=>({teamId:t.id,name:t.name,code:t.code,isCommish:t.isCommish}))})}
   if(req.method==="GET"&&p.length===3){const l=await store.getPublicLeague(p[2]);if(!l)throw new ApiError(404,"League not found");return json(res,200,pub(l));}
-  const accessCode=code(req); const l=await getLeague(p[2],accessCode); const statusChanged=L.refreshStatuses(l); if(statusChanged) l.__version=await store.saveLeague(l,accessCode,l.__version); const t=team(l,accessCode);
+  const accessCode=code(req); const l=await getLeague(p[2],accessCode); const statusChanged=L.refreshStatuses(l); if(statusChanged) l.__version=await store.saveLeague(l,accessCode,l.__version); await finalizeCompletedWeeks(l,accessCode); const t=team(l,accessCode);
   if(req.method==="GET"&&p[3]==="me"){const group=L.getGroups(l).find(g=>g.teamIds.includes(t.id));return json(res,200,{team:{id:t.id,name:t.name,isCommish:t.isCommish,groupId:group?.id||null,groupName:group?.name||"Group A"}});}
   if(req.method==="GET"&&p[3]==="weeks"&&p[5]==="submissions"){const w=L.getWeek(l,p[4]);if(!t.isCommish)throw new ApiError(403,"Commissioner only");const teams=l.teams.map(tm=>{const m=w.matchups.find(x=>x.teamIds?.includes(tm.id));return{id:tm.id,name:tm.name,groupId:L.getGroups(l).find(g=>g.teamIds.includes(tm.id))?.id||null,submitted:!!m?.lineups?.[tm.id],status:w.status}});return json(res,200,{week:{week:w.week,nflWeek:w.nflWeek,status:w.status,poolReadyAt:w.poolReadyAt||null},submitted:teams.filter(x=>x.submitted).length,total:teams.length,teams})}
   if(req.method==="GET"&&p[3]==="weeks"&&p[5]==="live"){
  const w=L.getWeek(l,p[4]),provider=getProvider(l.provider),ids=L.poolIds(w);
  const actuals=await provider.getActuals(l.season,w.nflWeek,ids);
  const schedule=provider.getSchedule?await provider.getSchedule(l.season,w.nflWeek):[];
- const allGamesFinal=Array.isArray(schedule)&&schedule.length>0&&schedule.every(g=>/final|complete|ended/i.test(String(g.status||"")));
+ const allGamesFinal=scheduleIsComplete(schedule);
  if(w.status==="locked"&&allGamesFinal){
   L.scoreWeek(l,p[4],actuals);
   l.__version=await store.saveLeague(l,code(req),l.__version);
