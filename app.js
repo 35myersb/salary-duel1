@@ -71,10 +71,26 @@ function matchupsView(){
 function liveView(){return matchupsView().replace("<h2>Live Matchups</h2>","<h2>Live Scoreboard</h2>")}
 function standingsView(){
  const teams=S.league.teams||[], comps=S.matchups?.matchups||[], live=S.live?.matchups||[];
- let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Weekly placement points: 1st gets the highest points in the group, then descending to 1 point.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
- const groupTable=g=>{const rows=(g.teamIds||[]).map(id=>{const tm=teams.find(t=>t.id===id),r=(S.league.standings||[]).find(x=>x.teamId===id),lv=live.flatMap(m=>m.teams||[]).find(t=>t.id===id);return{name:tm?.name||"Team",score:lv?.score??null,season:r?.standingsPoints??r?.pts??0,pf:r?.pf??0,id}});return '<div class="group-card"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+rows.length+' teams</span></div><table class="standings"><tr><th>#</th><th>Team</th><th>Week '+S.week+'</th><th>Pts</th><th>Season</th></tr>'+rows.sort((a,b)=>(b.score??-1)-(a.score??-1)).map((r,i)=>'<tr><td>'+ (i+1)+'</td><td>'+esc(r.name)+'</td><td>'+ (r.score==null?'—':Number(r.score).toFixed(1))+'</td><td>'+Math.max(rows.length-i,1)+'</td><td>'+r.season+'</td></tr>').join("")+'</table></div>'};
+ let out='<section class="card"><div class="bar"><div><h2>Standings</h2><p class="muted">Weekly placement points: first place receives the most points in the group. Tied scores share the same placement points.</p></div><span class="pill">WEEK '+S.week+'</span></div>';
+ const groupTable=g=>{
+  const comp=comps.find(m=>m.groupId===g.id),liveComp=live.find(m=>m.groupId===g.id),result=comp?.result||liveComp?.result||null;
+  const rows=(g.teamIds||[]).map(id=>{
+   const tm=teams.find(t=>t.id===id),r=(S.league.standings||[]).find(x=>x.teamId===id);
+   const lt=(liveComp?.teams||[]).find(t=>t.id===id);
+   const finalScore=result?.points?.[id];
+   const score=finalScore!=null?Number(finalScore):(lt?.score??null);
+   const weeklyPoints=result?.placementPoints?.[id];
+   return{name:tm?.name||"Team",score,weeklyPoints,season:r?.standingsPoints??r?.pts??0,pf:r?.pf??0,id};
+  });
+  rows.sort((a,b)=>(b.score??-1)-(a.score??-1)||a.name.localeCompare(b.name));
+  return '<div class="group-card"><div class="bar"><b>'+esc(g.name)+'</b><span class="pill">'+rows.length+' teams</span></div><table class="standings"><tr><th>#</th><th>Team</th><th>Week '+S.week+'</th><th>Pts</th><th>Season</th></tr>'+rows.map((r,i)=>{
+   const placePoints=r.weeklyPoints!=null?r.weeklyPoints:(result?0:Math.max(rows.length-i,1));
+   return '<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+(r.score==null?'—':Number(r.score).toFixed(1))+'</td><td>'+placePoints+'</td><td>'+r.season+'</td></tr>';
+  }).join("")+'</table></div>';
+ };
  for(const g of S.league.groups||[])out+=groupTable(g);
- out+='<div class="group-card"><h3>League Standings</h3><p class="muted">Season standings are based on accumulated weekly placement points. Total fantasy points break ties.</p><table class="standings"><tr><th>#</th><th>Team</th><th>Pts</th><th>Total PF</th></tr>'+[...(S.league.standings||[])].map((r,i)=>'<tr><td>'+ (i+1)+'</td><td>'+esc(r.name)+'</td><td>'+ (r.standingsPoints??r.pts??0)+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td></tr>').join("")+'</table></div></section>';return out;
+ out+='<div class="group-card"><h3>League Standings</h3><p class="muted">Season standings accumulate each completed week’s group placement points. Total fantasy points break ties.</p><table class="standings"><tr><th>#</th><th>Team</th><th>Pts</th><th>Total PF</th></tr>'+[...(S.league.standings||[])].map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+(r.standingsPoints??r.pts??0)+'</td><td>'+Number(r.pf||0).toFixed(1)+'</td></tr>').join("")+'</table></div></section>';
+ return out;
 }
 function injuryLabel(p){const s=String(p.injuryStatus||"healthy").toLowerCase();if(s==="healthy")return '<span class="good">Healthy</span>';if(s==="questionable")return '<span class="err">Q — Questionable</span>';return '<span class="err">'+esc(s.replaceAll("_"," "))+'</span>'}
 function playersView(){const pool=groupPool();if(!pool.length)return '<section class="card"><h2>Your Group Player Pool</h2><p class="muted">Your unique group player pool has not loaded yet.</p><p class="err">If the commissioner has generated the pool, refresh the league and try again.</p></section>';return '<section class="card"><h2>Your Group Player Pool</h2><p class="muted">Every team in your group receives this same unique pool. Out/IR/inactive players are excluded; questionable players are clearly marked.</p><div class="grid">'+pool.map(p=>'<div class="player"><span><b>'+esc(p.name)+'</b><small>'+esc(p.pos)+' · '+esc(p.team)+' · '+(p.opponent?esc(p.homeAway||'vs')+' '+esc(p.opponent)+' · ':'')+p.proj+' proj · '+injuryLabel(p)+'</small></span><b>'+money(p.salary)+'</b></div>').join("")+'</div></section>'}
