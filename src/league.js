@@ -160,7 +160,7 @@ function buildPool(players, rng) {
           salary: salaryFromProjection(p.proj, p.pos, {
             roleScore: p.roleScore, matchupBoost: p.matchupBoost, consistencyBoost: p.consistencyBoost
           }),
-          injuryStatus: p.injuryStatus || "healthy"
+          injuryStatus: p.injuryStatus || "unknown", injuryDataCheckedAt: p.injuryDataCheckedAt || null
         });
         if (pool.filter(x => x.pos === pos).length >= n) break;
       }
