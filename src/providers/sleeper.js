@@ -87,7 +87,7 @@ export default {
     full_name:p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" "),
     position:p.position,
     team:p.team,
-    injuryStatus:p.injury_status||p.injury_statuses?.[0]||"unknown",
+    injuryStatus:p.injury_status||p.injury_statuses?.[0]||"no_designation",
     injuryDataCheckedAt,
     depthChartOrder:Number.isFinite(Number(p.depth_chart_order))?Number(p.depth_chart_order):null,
     depthChartPosition:p.depth_chart_position||null
