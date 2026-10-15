@@ -116,11 +116,12 @@ function resolveStandoff(league, w, m) {
 export function lockWeek(league,w){w.status='locked';}
 function buildPool(players, rng) {
   const pool = [];
-  const unavailable = new Set(["out","ir","doubtful","inactive","injured_reserve"]);
+  const unavailable = new Set(["out","ir","doubtful","inactive","injured reserve","injured_reserve","injured-reserve"]);
+  const normalizeInjury = (status) => String(status || "unknown").trim().toLowerCase().replace(/\\s+/g, " ");
   for (const pos of Object.keys(POOL_SIZES)) {
     const candidates = players
       .filter((p) => p.pos === pos
-        && !unavailable.has(String(p.injuryStatus||"").toLowerCase())
+        && !unavailable.has(normalizeInjury(p.injuryStatus))
         && (pos !== "QB" || p.likelyStarter === true))
       .sort((a, b) => b.proj - a.proj)
       .slice(0, POOL_CANDIDATES[pos]);
@@ -146,7 +147,7 @@ function buildPool(players, rng) {
           salary: salaryFromProjection(p.proj, p.pos, {
             roleScore: p.roleScore, matchupBoost: p.matchupBoost, consistencyBoost: p.consistencyBoost
           }),
-          injuryStatus: p.injuryStatus || "healthy"
+          injuryStatus: p.injuryStatus || "unknown", injuryDataCheckedAt: p.injuryDataCheckedAt || null
         });
       }
     });
