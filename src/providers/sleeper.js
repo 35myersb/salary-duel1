@@ -79,13 +79,16 @@ async function addOpponents(players, season, week){
 export default {
  name:"sleeper",label:"Real NFL data (Sleeper)",
  async getPlayers(s,w){
-  const players=await cached("players-nfl",86400000,()=>getJSON(playersEndpoint()));
+  const injuryDataCheckedAt=new Date().toISOString();
+  // Refresh player/injury metadata frequently; a 24-hour cache can miss late-week changes.
+  const players=await cached("players-nfl",10*60*1000,()=>getJSON(playersEndpoint()));
   const metaPlayers=Object.entries(players||{}).map(([id,p])=>({
     player_id:id,
     full_name:p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" "),
     position:p.position,
     team:p.team,
-    injuryStatus:p.injury_status||p.injury_statuses?.[0]||null,
+    injuryStatus:p.injury_status||p.injury_statuses?.[0]||"unknown",
+    injuryDataCheckedAt,
     depthChartOrder:Number.isFinite(Number(p.depth_chart_order))?Number(p.depth_chart_order):null,
     depthChartPosition:p.depth_chart_position||null
   })).filter(p=>POS.includes(p.position)&&p.team);
@@ -108,7 +111,7 @@ export default {
       const consensusProj=consensus?consensusForPlayer(consensus,temp):null;
       return {id:"sl-"+i.player_id,name:meta.full_name||i.player_id,pos:meta.position,team:meta.team,
         proj:consensusProj??baseProj,baseProj,consensusProj,
-        injuryStatus:meta.injuryStatus||null,likelyStarter:meta.likelyStarter!==false,
+        injuryStatus:meta.injuryStatus||"unknown",injuryDataCheckedAt,likelyStarter:meta.likelyStarter!==false,
         depthChartOrder:meta.depthChartOrder};
     }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2),s,w).then(rows=>rows.filter(p=>!p.onBye));
   }
@@ -122,7 +125,7 @@ export default {
   }
   const out=historical.filter(p=>p.proj>=2).map(p=>({
     id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,
-    injuryStatus:p.injuryStatus||null,likelyStarter:p.likelyStarter!==false,depthChartOrder:p.depthChartOrder
+    injuryStatus:p.injuryStatus||"unknown",injuryDataCheckedAt:p.injuryDataCheckedAt||injuryDataCheckedAt,likelyStarter:p.likelyStarter!==false,depthChartOrder:p.depthChartOrder
   }));
   return (await addOpponents(out,s,w)).filter(p=>!p.onBye);
  },
