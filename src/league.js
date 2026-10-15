@@ -117,7 +117,7 @@ export function lockWeek(league,w){w.status='locked';}
 function buildPool(players, rng) {
   const pool = [];
   const unavailable = new Set(["out","ir","doubtful","inactive","injured reserve","injured_reserve","injured-reserve"]);
-  const normalizeInjury = (status) => String(status || "unknown").trim().toLowerCase().replace(/\\s+/g, " ");
+  const normalizeInjury = (status) => String(status || "unknown").trim().toLowerCase().replace(/\s+/g, " ");
   for (const pos of Object.keys(POOL_SIZES)) {
     const candidates = players
       .filter((p) => p.pos === pos
