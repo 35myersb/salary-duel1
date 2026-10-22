@@ -26,7 +26,7 @@ function numberAt(s){
   const m=String(s||"").replace(/,/g,"").match(/-?\d+(?:\.\d+)?/);
   return m?Number(m[0]):null;
 }
-function parseTables(html){
+function parseTables(html, sourceName){
   const out=[];
   const rows=[...String(html||"").matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map(m=>parseCells(m[1])).filter(r=>r.length>=3);
   for(let i=0;i<rows.length;i++){
@@ -46,7 +46,10 @@ function parseTables(html){
       const rb=raw.match(/^(.+?)\s+(?:QB|RB|WR|TE)\s*[·-]\s*([A-Z]{2,3})$/);
       if(rb)name=rb[1].trim();
       const passTd=tdIdx>=0?numberAt(r[tdIdx]):null;
-      const proj=passTd!=null&&h.some(x=>x.includes("patd")||x.includes("passing td")) ? rawProj-(2*passTd) : rawProj;
+      // The 4for4 endpoint is explicitly a 6-point passing-TD format while
+      // CAPPED scores passing TDs at 4. FantasyPros' FPTS already uses its
+      // standard 4-point passing TD setting, so don't adjust it a second time.
+      const proj=sourceName==="4for4"&&passTd!=null ? rawProj-(2*passTd) : rawProj;
       if(name&&name.toLowerCase()!=="player"&&Number.isFinite(proj)&&proj>=0)out.push({name,team:tm,proj});
     }
   }
@@ -56,7 +59,7 @@ async function fetchSource(source,pos,season,week){
   try{
     const r=await fetch(source.url(pos,season,week),{signal:AbortSignal.timeout(12000),headers:{"user-agent":"Capped/1.0"}});
     if(!r.ok)return [];
-    return parseTables(await r.text());
+    return parseTables(await r.text(),source.name);
   }catch{return [];}
 }
 export async function getConsensusProjections(season,week){
