@@ -75,9 +75,13 @@ export async function getConsensusProjections(season,week){
       }
     });
     for(const [key,vals] of byKey){
-      if(vals.length<2)continue;
-      const avg=vals.reduce((a,v)=>a+v.proj,0)/vals.length;
-      result.set(pos+"|"+key.split("|")[0],{projection:Number(avg.toFixed(1)),sources:vals.map(v=>v.source)});
+      // Use a single verified weekly projection source when the other provider
+      // blocks scraping or omits a player. Requiring two sources caused the app
+      // to fall back to recent historical fantasy points, which are not forecasts.
+      const unique = [...new Map(vals.map(v=>[v.source,v])).values()];
+      if(!unique.length) continue;
+      const avg=unique.reduce((a,v)=>a+v.proj,0)/unique.length;
+      result.set(pos+"|"+key.split("|")[0],{projection:Number(avg.toFixed(1)),sources:unique.map(v=>v.source)});
     }
   }
   return result;
