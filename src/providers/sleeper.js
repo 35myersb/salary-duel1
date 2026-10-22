@@ -99,7 +99,8 @@ export default {
   let projected=[];
   try {
     const r=await getJSON(BASE+"/projections/nfl/regular/"+s+"/"+w+"?season_type=regular");
-    if(Array.isArray(r))projected=r;
+    if(Array.isArray(r)) projected=r;
+    else if(r && typeof r==="object") projected=Object.entries(r).map(([player_id,value])=>({player_id,...(value||{})}));
   } catch {}
 
   if(projected.length){
