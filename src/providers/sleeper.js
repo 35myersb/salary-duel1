@@ -116,17 +116,21 @@ export default {
     }).filter(p=>POS.includes(p.pos)&&p.team&&p.proj>=2),s,w).then(rows=>rows.filter(p=>!p.onBye));
   }
 
-  const historical=await historicalProjections(s,w,metaPlayers);
-  if (consensus) {
-    for (const p of historical) {
-      const cp=consensusForPlayer(consensus,{name:p.full_name,pos:p.position});
-      if (cp!=null) p.proj=cp;
-    }
+  // Do not label recent historical fantasy averages as weekly projections.
+  // If Sleeper's live projection endpoint is unavailable, use current weekly
+  // consensus projections only; omit players with no validated projection.
+  if (!consensus || consensus.size === 0) {
+    throw new Error("Current weekly projections are unavailable from projection providers; refusing to substitute historical averages.");
   }
-  const out=historical.filter(p=>p.proj>=2).map(p=>({
-    id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:p.proj,
-    injuryStatus:p.injuryStatus||"unknown",injuryDataCheckedAt:p.injuryDataCheckedAt||injuryDataCheckedAt,likelyStarter:p.likelyStarter!==false,depthChartOrder:p.depthChartOrder
-  }));
+  const out=metaPlayers.map(p=>{
+    const projection=consensusForPlayer(consensus,{name:p.full_name,pos:p.position});
+    if(!Number.isFinite(projection)||projection<2)return null;
+    return {
+      id:"sl-"+p.player_id,name:p.full_name,pos:p.position,team:p.team,proj:projection,
+      injuryStatus:p.injuryStatus||"unknown",injuryDataCheckedAt:p.injuryDataCheckedAt||injuryDataCheckedAt,
+      likelyStarter:p.likelyStarter!==false,depthChartOrder:p.depthChartOrder
+    };
+  }).filter(Boolean);
   return (await addOpponents(out,s,w)).filter(p=>!p.onBye);
  },
  async getLockAt(s,w){
